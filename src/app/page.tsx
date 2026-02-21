@@ -13,6 +13,7 @@ import PromptEditor from "@/components/PromptEditor";
 import ScriptPreview from "@/components/ScriptPreview";
 import VoiceSettingsPanel from "@/components/VoiceSettings";
 import AudioPlayer from "@/components/AudioPlayer";
+import SettingsModal from "@/components/SettingsModal";
 
 const DEFAULT_VOICE: TVoiceSettings = {
   spk_audio_prompt: "",
@@ -35,6 +36,7 @@ export default function StudioPage() {
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const canGenScript = topic.trim().length > 0 || prompt.trim().length > 0;
@@ -153,6 +155,14 @@ export default function StudioPage() {
               {step === "done" && "完成"}
               {step === "error" && "出错了"}
             </span>
+            <div className="w-px h-4 bg-slate-300 mx-2" />
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+              title="全局设置"
+            >
+              ⚙️
+            </button>
           </div>
         </div>
       </header>
@@ -250,6 +260,11 @@ export default function StudioPage() {
         </aside>
 
       </main>
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </div>
   );
 }
