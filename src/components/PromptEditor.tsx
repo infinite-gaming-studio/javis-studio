@@ -8,40 +8,57 @@ const TEMPLATES = [
 ];
 
 interface Props {
+    topic: string;
+    onTopicChange: (v: string) => void;
     value: string;
     onChange: (v: string) => void;
 }
 
-export default function PromptEditor({ value, onChange }: Props) {
+export default function PromptEditor({ topic, onTopicChange, value, onChange }: Props) {
     return (
-        <div className="space-y-3">
-            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                旁白提示词
-            </label>
-
-            {/* Quick templates */}
-            <div className="flex flex-wrap gap-1.5">
-                {TEMPLATES.map((t) => (
-                    <button
-                        key={t.label}
-                        onClick={() => onChange(t.text)}
-                        className="px-2.5 py-1 rounded-full text-xs bg-white border border-slate-200 hover:border-violet-300 text-slate-600 hover:text-violet-600 transition-all duration-200 shadow-sm hover:shadow"
-                    >
-                        {t.label}
-                    </button>
-                ))}
+        <div className="space-y-4">
+            <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    主题 / 题目
+                </label>
+                <input
+                    type="text"
+                    value={topic}
+                    onChange={(e) => onTopicChange(e.target.value)}
+                    placeholder="输入视频/内容的主题（如：苹果Vision Pro体验报告）"
+                    className="w-full rounded-xl bg-white/60 border border-slate-200 focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 outline-none text-sm text-slate-800 placeholder-slate-400 px-3 py-2.5 transition-all duration-200 shadow-inner"
+                />
             </div>
 
-            <textarea
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
-                rows={5}
-                placeholder="描述你想要的旁白风格、情感基调、时长要求……"
-                className="w-full rounded-xl bg-white/60 border border-slate-200 focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 outline-none
-                   text-sm text-slate-800 placeholder-slate-400 px-3 py-2.5 resize-none
-                   transition-all duration-200 shadow-inner"
-            />
-            <p className="text-right text-xs text-slate-500">{value.length} 字</p>
+            <div className="space-y-1.5">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                    旁白提示词 (Prompt)
+                </label>
+
+                {/* Quick templates */}
+                <div className="flex flex-wrap gap-1.5 pb-1">
+                    {TEMPLATES.map((t) => (
+                        <button
+                            key={t.label}
+                            onClick={() => onChange(t.text)}
+                            className="px-2.5 py-1 rounded-full text-xs bg-white border border-slate-200 hover:border-violet-300 text-slate-600 hover:text-violet-600 transition-all duration-200 shadow-sm hover:shadow"
+                        >
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
+
+                <textarea
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    rows={4}
+                    placeholder="描述你想要的旁白风格、情感基调、时长要求……"
+                    className="w-full rounded-xl bg-white/60 border border-slate-200 focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 outline-none
+                       text-sm text-slate-800 placeholder-slate-400 px-3 py-2.5 resize-none
+                       transition-all duration-200 shadow-inner"
+                />
+                <p className="text-right text-xs text-slate-500">{value.length} 字</p>
+            </div>
         </div>
     );
 }

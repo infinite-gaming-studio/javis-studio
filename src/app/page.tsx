@@ -1,11 +1,11 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import {
   type VoiceSettings as TVoiceSettings,
   ScriptSegment,
   AudioSegmentResult,
   generateScript,
-  generateFull,
+  ttsSingle,
 } from "@/lib/api";
 
 import ImageUploader from "@/components/ImageUploader";
@@ -24,6 +24,7 @@ const DEFAULT_VOICE: TVoiceSettings = {
 type Step = "idle" | "scripting" | "synthesizing" | "done" | "error";
 
 export default function StudioPage() {
+  const [topic, setTopic] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [prompt, setPrompt] = useState("");
   const [voiceSettings, setVoiceSettings] = useState<TVoiceSettings>(DEFAULT_VOICE);
@@ -34,8 +35,9 @@ export default function StudioPage() {
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
-  const canGenScript = prompt.trim().length > 0;
+  const canGenScript = topic.trim().length > 0 || prompt.trim().length > 0;
   const canGenAudio = script.length > 0 && voiceSettings.spk_audio_prompt;
 
   const handleGenerateScript = async () => {
@@ -45,7 +47,8 @@ export default function StudioPage() {
     setSegments([]);
     setFinalAudioUrl(undefined);
     try {
-      const res = await generateScript(images, prompt);
+      const fullPrompt = topic ? `主题：${topic}\n\n${prompt}` : prompt;
+      const res = await generateScript(images, fullPrompt);
       setScript(res.script);
       setStep("idle");
     } catch (e: unknown) {
@@ -57,17 +60,77 @@ export default function StudioPage() {
   const handleGenerateAudio = async () => {
     setError("");
     setStep("synthesizing");
-    setSegments([]);
-    setFinalAudioUrl(undefined);
+
+    // Create an abort controller to support cancellation
+    abortControllerRef.current = new AbortController();
+    const newSegments = [...segments];
+
     try {
-      const res = await generateFull(images, prompt, voiceSettings, script, true);
-      setScript(res.script);
-      setSegments(res.segments);
-      setFinalAudioUrl(res.final_audio_url);
+      for (const seg of script) {
+        if (abortControllerRef.current.signal.aborted) {
+          break;
+        }
+
+        const existing = newSegments.find(s => s.segment_index === seg.index);
+        if (existing && existing.text === seg.text) {
+          continue; // Already generated this text
+        }
+
+        const res = await ttsSingle(seg.text, voiceSettings);
+
+        const generated: AudioSegmentResult = {
+          segment_index: seg.index,
+          text: seg.text,
+          audio_url: res.audio_url,
+          duration_secs: res.duration_secs
+        };
+
+        const eIdx = newSegments.findIndex(s => s.segment_index === seg.index);
+        if (eIdx >= 0) {
+          newSegments[eIdx] = generated;
+        } else {
+          newSegments.push(generated);
+        }
+
+        // Progressively update state
+        setSegments([...newSegments]);
+      }
+
+      if (abortControllerRef.current.signal.aborted) {
+        setStep("idle");
+        return;
+      }
+
+      // Concatenate local audio files
+      if (newSegments.length > 0) {
+        newSegments.sort((a, b) => a.segment_index - b.segment_index);
+        const urls = newSegments.map(s => s.audio_url);
+
+        const concatRes = await fetch("/api/studio/concat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ urls })
+        });
+
+        if (!concatRes.ok) {
+          throw new Error("拼接音频失败");
+        }
+        const { url } = await concatRes.json();
+        setFinalAudioUrl(url);
+      }
+
       setStep("done");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "音频合成失败");
       setStep("error");
+    } finally {
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleCancelGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -104,7 +167,7 @@ export default function StudioPage() {
               <ImageUploader images={images} onChange={setImages} />
             </div>
             <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4">
-              <PromptEditor value={prompt} onChange={setPrompt} />
+              <PromptEditor topic={topic} onTopicChange={setTopic} value={prompt} onChange={setPrompt} />
               <button
                 onClick={handleGenerateScript}
                 disabled={!canGenScript || step === "scripting"}
@@ -135,17 +198,29 @@ export default function StudioPage() {
                 {!canGenAudio && (
                   <p className="text-xs text-amber-400 mb-2">⚠️ 请先在右侧上传参考说话人音频</p>
                 )}
-                <button
-                  onClick={handleGenerateAudio}
-                  disabled={!canGenAudio || step === "synthesizing"}
-                  className="w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-200
-                             bg-gradient-to-r from-emerald-500 to-teal-500
-                             hover:from-emerald-600 hover:to-teal-600
-                             disabled:opacity-50 disabled:cursor-not-allowed
-                             shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/40"
-                >
-                  {step === "synthesizing" ? "合成中…" : "🔊 合成全部语音"}
-                </button>
+                {step === "synthesizing" ? (
+                  <button
+                    onClick={handleCancelGeneration}
+                    className="w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-200
+                               bg-gradient-to-r from-red-500 to-rose-500
+                               hover:from-red-600 hover:to-rose-600
+                               shadow-md shadow-red-500/20 hover:shadow-lg hover:shadow-red-500/40 animate-pulse"
+                  >
+                    ⏹ 取消生成
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleGenerateAudio}
+                    disabled={!canGenAudio}
+                    className="w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-200
+                               bg-gradient-to-r from-emerald-500 to-teal-500
+                               hover:from-emerald-600 hover:to-teal-600
+                               disabled:opacity-50 disabled:cursor-not-allowed
+                               shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/40"
+                  >
+                    🔊 {segments.length > 0 && segments.length < script.length ? "继续合成语音" : "合成全部语音"}
+                  </button>
+                )}
               </div>
             )}
 

@@ -16,10 +16,6 @@ const EMOTION_MODES: { value: EmotionMode; label: string; desc: string }[] = [
 
 const EMOTION_LABELS = ["开心", "愤怒", "悲伤", "恐惧", "厌恶", "忧郁", "惊讶", "平静"];
 const EMOTION_KEYS = ["happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm"];
-const EMOTION_COLORS = [
-    "bg-yellow-400", "bg-red-400", "bg-indigo-400", "bg-orange-400",
-    "bg-green-400", "bg-purple-400", "bg-pink-400", "bg-blue-400",
-];
 
 export default function VoiceSettings({ value, onChange }: Props) {
     const spkRef = useRef<HTMLInputElement>(null);
