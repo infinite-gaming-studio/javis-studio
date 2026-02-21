@@ -38,16 +38,22 @@ export async function POST(req: Request) {
         const localPaths: string[] = [];
         for (let i = 0; i < urls.length; i++) {
             const url = urls[i];
-            const isAbsolute = url.startsWith("http");
-            const fetchUrl = isAbsolute ? url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url.startsWith('/') ? '' : '/'}${url}`;
+            let buffer: Buffer;
 
-            const res = await fetch(fetchUrl);
-            if (!res.ok) {
-                throw new Error(`Failed to fetch ${fetchUrl}: ${res.statusText}`);
+            // 本地文件直接读取，避免不必要的 HTTP 请求
+            if (url.startsWith("/audio/")) {
+                const localFilePath = path.join(process.cwd(), "public", url);
+                buffer = await fs.readFile(localFilePath);
+            } else {
+                const fetchUrl = url.startsWith("http") ? url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url.startsWith('/') ? '' : '/'}${url}`;
+                const res = await fetch(fetchUrl);
+                if (!res.ok) {
+                    throw new Error(`Failed to fetch ${fetchUrl}: ${res.statusText}`);
+                }
+                buffer = Buffer.from(await res.arrayBuffer());
             }
-            const buffer = Buffer.from(await res.arrayBuffer());
-            const parsedUrl = new URL(fetchUrl);
-            const ext = path.extname(parsedUrl.pathname) || ".wav";
+
+            const ext = path.extname(url) || ".wav";
             const localPath = path.join(tempDir, `segment_${i}${ext}`);
             await fs.writeFile(localPath, buffer);
             localPaths.push(localPath);
