@@ -2,18 +2,22 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-// @ts-expect-error uuid types not installed
 import { v4 as uuidv4 } from "uuid";
-// @ts-expect-error fluent-ffmpeg types not installed
 import ffmpeg from "fluent-ffmpeg";
-// @ts-expect-error ffmpeg-static types not installed
 import ffmpegStatic from "ffmpeg-static";
 
-// Configure ffmpeg path if available
+// Configure ffmpeg path
 if (ffmpegStatic) {
-    ffmpeg.setFfmpegPath(ffmpegStatic as string);
-} else {
-    console.warn("ffmpeg-static not found. Make sure ffmpeg is installed in the system.");
+    ffmpeg.setFfmpegPath(ffmpegStatic);
+}
+
+/**
+ * Create a concat demuxer file for ffmpeg
+ * This is the recommended way to concatenate media files
+ */
+async function createConcatFile(inputPaths: string[], concatFilePath: string): Promise<void> {
+    const lines = inputPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`);
+    await fs.writeFile(concatFilePath, lines.join('\n'), 'utf-8');
 }
 
 export async function POST(req: Request) {
@@ -35,7 +39,6 @@ export async function POST(req: Request) {
         for (let i = 0; i < urls.length; i++) {
             const url = urls[i];
             const isAbsolute = url.startsWith("http");
-            // If the URL is relative, assume it's from the backend on localhost:8000
             const fetchUrl = isAbsolute ? url : `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}${url.startsWith('/') ? '' : '/'}${url}`;
 
             const res = await fetch(fetchUrl);
@@ -53,14 +56,19 @@ export async function POST(req: Request) {
         const outFileName = `merged_${uuidv4()}.wav`;
         const outPath = path.join(publicAudioDir, outFileName);
 
-        // Merge files using fluent-ffmpeg
+        // Create concat demuxer file (best practice for ffmpeg concat)
+        const concatListPath = path.join(tempDir, "concat_list.txt");
+        await createConcatFile(localPaths, concatListPath);
+
+        // Use ffmpeg concat demuxer for reliable audio merging
         await new Promise<void>((resolve, reject) => {
-            const command = ffmpeg();
-
-            // Add each file as input
-            localPaths.forEach(p => command.input(p));
-
-            command
+            ffmpeg()
+                .input(concatListPath)
+                .inputOptions(['-f', 'concat', '-safe', '0'])
+                .outputOptions([
+                    '-c', 'copy',           // Copy codec (no re-encoding, fast)
+                    '-y'                     // Overwrite output
+                ])
                 .on("error", (err: Error) => {
                     console.error("FFmpeg concat error:", err);
                     reject(err);
@@ -69,7 +77,7 @@ export async function POST(req: Request) {
                     console.log(`Successfully merged ${urls.length} segments to ${outPath}`);
                     resolve();
                 })
-                .mergeToFile(outPath, tempDir);
+                .save(outPath);
         });
 
         // Cleanup temporary directory
@@ -77,7 +85,6 @@ export async function POST(req: Request) {
             console.warn("Failed to cleanup temp dir:", err);
         });
 
-        // Return the public URL to the merged file
         return NextResponse.json({ url: `/audio/${outFileName}` });
     } catch (e: unknown) {
         console.error("Concat Route Error:", e);
