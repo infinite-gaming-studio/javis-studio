@@ -1,11 +1,13 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Pause, Download, Volume2, Music, Loader2, Package } from "lucide-react";
+import { Play, Pause, Download, Volume2, Loader2, Package } from "lucide-react";
+import JSZip from "jszip";
 import { AudioSegmentResult, audioUrl } from "@/lib/api";
 
 interface Props {
     segments: AudioSegmentResult[];
     loading?: boolean;
+    projectName?: string;
 }
 
 // 下载单个音频文件
@@ -26,15 +28,37 @@ async function downloadAudio(url: string, filename: string) {
     }
 }
 
-// 批量下载所有音频
-async function downloadAllAudios(segments: AudioSegmentResult[]) {
+// 批量下载所有音频为压缩包
+async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectName?: string) {
+    const zip = new JSZip();
+    const folderName = projectName?.trim() || "audio_segments";
+    const folder = zip.folder(folderName);
+
+    if (!folder) return;
+
+    // 添加每个音频文件到zip
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         const filename = `segment_${String(i + 1).padStart(2, '0')}.wav`;
-        await downloadAudio(seg.audio_url, filename);
-        // 添加小延迟避免浏览器阻塞
-        await new Promise(resolve => setTimeout(resolve, 200));
+        try {
+            const response = await fetch(audioUrl(seg.audio_url));
+            const blob = await response.blob();
+            folder.file(filename, blob);
+        } catch (error) {
+            console.error(`下载第 ${i + 1} 段失败:`, error);
+        }
     }
+
+    // 生成并下载zip文件
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const downloadUrl = window.URL.createObjectURL(zipBlob);
+    const link = document.createElement('a');
+    link.href = downloadUrl;
+    link.download = `${folderName}.zip`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(downloadUrl);
 }
 
 function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number }) {
@@ -176,13 +200,13 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
     );
 }
 
-export default function AudioPlayer({ segments, loading }: Props) {
+export default function AudioPlayer({ segments, loading, projectName }: Props) {
     const [isDownloading, setIsDownloading] = useState(false);
 
     const handleBatchDownload = async () => {
         if (segments.length === 0 || isDownloading) return;
         setIsDownloading(true);
-        await downloadAllAudios(segments);
+        await downloadAllAudiosAsZip(segments, projectName);
         setIsDownloading(false);
     };
 
