@@ -60,13 +60,17 @@ export async function POST(req: Request) {
         const concatListPath = path.join(tempDir, "concat_list.txt");
         await createConcatFile(localPaths, concatListPath);
 
-        // Use ffmpeg concat demuxer for reliable audio merging
+        // Use ffmpeg concat demuxer with re-encoding for maximum compatibility
+        // -c copy requires identical format across all inputs; re-encoding handles any format
         await new Promise<void>((resolve, reject) => {
             ffmpeg()
                 .input(concatListPath)
                 .inputOptions(['-f', 'concat', '-safe', '0'])
                 .outputOptions([
-                    '-c', 'copy',           // Copy codec (no re-encoding, fast)
+                    '-acodec', 'pcm_s16le',  // PCM 16-bit (CD音质标准，兼容性好)
+                    '-ar', '44100',          // 44.1kHz (CD音质标准，与大多数TTS输出匹配)
+                    '-ac', '2',              // Stereo channel (dual)
+                    '-af', 'aresample=resampler=soxr:precision=28',  // 使用SOXR高品质重采样算法
                     '-y'                     // Overwrite output
                 ])
                 .on("error", (err: Error) => {
