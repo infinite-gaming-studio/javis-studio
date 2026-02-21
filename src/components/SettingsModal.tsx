@@ -11,6 +11,8 @@ export interface SettingsConfig {
     ttsToken: string;
 }
 
+type TestStatus = "idle" | "testing" | "success" | "error";
+
 const DEFAULT_CONFIG: SettingsConfig = {
     llmApiUrl: "",
     llmToken: "",
@@ -30,6 +32,11 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     const [isMounted, setIsMounted] = useState(false);
     const [showModels, setShowModels] = useState(false);
     const modelDropdownRef = useRef<HTMLDivElement>(null);
+
+    const [llmTestStatus, setLlmTestStatus] = useState<TestStatus>("idle");
+    const [llmTestMsg, setLlmTestMsg] = useState("");
+    const [ttsTestStatus, setTtsTestStatus] = useState<TestStatus>("idle");
+    const [ttsTestMsg, setTtsTestMsg] = useState("");
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -65,6 +72,97 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
             }
         }
     }, [isOpen]);
+
+    const testLLMConnection = async () => {
+        setLlmTestStatus("testing");
+        setLlmTestMsg("");
+        try {
+            const url = config.llmApiUrl || "https://api.openai.com/v1";
+            let baseUrl = url.trim().endsWith('/') ? url.trim().slice(0, -1) : url.trim();
+
+            // If the user provided a full completions endpoint, strip it to get the base API URL
+            baseUrl = baseUrl.replace(/\/chat\/completions$/, "").replace(/\/completions$/, "");
+
+            // /models is the standard OpenAI-compatible way to test connectivity and verify the key
+            const testUrl = `${baseUrl}/models`;
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: testUrl,
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${config.llmToken}`,
+                    }
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setLlmTestStatus("success");
+                setLlmTestMsg("连接成功！");
+            } else {
+                setLlmTestStatus("error");
+                const statusInfo = data.status ? `${data.status} ` : "";
+                setLlmTestMsg(`连接失败: ${statusInfo}${data.errorDetail || data.statusText || '未知错误'}`);
+            }
+        } catch (e: unknown) {
+            setLlmTestStatus("error");
+            setLlmTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
+    const testTTSConnection = async () => {
+        setTtsTestStatus("testing");
+        setTtsTestMsg("");
+        try {
+            const url = config.ttsApiUrl || "http://localhost:8000";
+            let baseUrl = url.trim().endsWith('/') ? url.trim().slice(0, -1) : url.trim();
+
+            // According to API.md, the health check endpoint is /api/health
+            // If the user already provided /api, we append /health, otherwise /api/health
+            const testUrl = baseUrl.endsWith('/api') ? `${baseUrl}/health` : `${baseUrl}/api/health`;
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: testUrl,
+                    method: "GET",
+                    headers: config.ttsToken ? {
+                        "Authorization": `Bearer ${config.ttsToken}`,
+                    } : {}
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setTtsTestStatus("success");
+                setTtsTestMsg("连接成功！");
+            } else {
+                // Fallback: try base URL if /api/health fails
+                const baseRes = await fetch("/api/test-connection", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: baseUrl, method: "GET" })
+                });
+                const baseData = await baseRes.json();
+
+                if (baseData.ok) {
+                    setTtsTestStatus("success");
+                    setTtsTestMsg("服务器可访问 (但健康检查未通过)");
+                } else {
+                    setTtsTestStatus("error");
+                    const statusInfo = data.status ? `${data.status} ` : "";
+                    setTtsTestMsg(`连接失败: ${statusInfo}${data.errorDetail || data.statusText || '未知错误'}`);
+                }
+            }
+        } catch (e: unknown) {
+            setTtsTestStatus("error");
+            setTtsTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
 
     if (!isMounted || !isOpen) return null;
 
@@ -127,7 +225,23 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
 
                 <div className="p-6 space-y-5">
                     <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <h3 className="text-sm font-semibold text-slate-700">大模型 (LLM) 设置</h3>
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">大模型 (LLM) 设置</h3>
+                            <div className="flex items-center gap-2">
+                                {llmTestMsg && (
+                                    <span className={`text-[10px] font-medium ${llmTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {llmTestMsg}
+                                    </span>
+                                )}
+                                <button
+                                    onClick={testLLMConnection}
+                                    disabled={llmTestStatus === "testing"}
+                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                >
+                                    {llmTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                </button>
+                            </div>
+                        </div>
                         <div className="space-y-3">
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">API 地址</label>
@@ -200,7 +314,23 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                     </div>
 
                     <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <h3 className="text-sm font-semibold text-slate-700">语音合成 (TTS) 设置</h3>
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">语音合成 (TTS) 设置</h3>
+                            <div className="flex items-center gap-2">
+                                {ttsTestMsg && (
+                                    <span className={`text-[10px] font-medium ${ttsTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        {ttsTestMsg}
+                                    </span>
+                                )}
+                                <button
+                                    onClick={testTTSConnection}
+                                    disabled={ttsTestStatus === "testing"}
+                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                >
+                                    {ttsTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                </button>
+                            </div>
+                        </div>
                         <div className="space-y-3">
                             <div>
                                 <label className="block text-xs font-medium text-slate-500 mb-1">API 地址</label>
@@ -253,7 +383,7 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                         </button>
                         <button
                             onClick={handleSave}
-                            className="px-4 py-2 text-sm font-semibold text-white bg-violet-600 hover:bg-violet-700 rounded-xl shadow-md shadow-violet-500/20 transition-all hover:shadow-lg hover:shadow-violet-500/30"
+                            className="px-4 py-2 text-sm font-semibold text-white bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 rounded-xl shadow-md shadow-cyan-500/20 transition-all hover:shadow-lg hover:shadow-cyan-500/30"
                         >
                             保存配置
                         </button>

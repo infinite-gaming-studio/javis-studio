@@ -120,7 +120,7 @@ export default function StudioPage() {
         newSegments.sort((a, b) => a.segment_index - b.segment_index);
         const urls = newSegments.map(s => s.audio_url);
 
-        const concatRes = await fetch("/api/studio/concat", {
+        const concatRes = await fetch("/api/concat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ urls })
@@ -270,9 +270,19 @@ export default function StudioPage() {
 
             {/* Error */}
             {step === "error" && error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600 flex items-center gap-2">
-                <XCircle className="w-4 h-4 shrink-0" />
-                {error}
+              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600 flex items-start gap-2">
+                <XCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p>{error}</p>
+                  {(error.includes("全局设置") || error.includes("配置") || error.includes("URL")) && (
+                    <button
+                      onClick={() => setIsSettingsOpen(true)}
+                      className="mt-2 text-[11px] font-bold underline text-red-700 hover:text-red-900"
+                    >
+                      ⚙️ 打开全局设置
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>

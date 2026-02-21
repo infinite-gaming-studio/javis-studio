@@ -1,7 +1,5 @@
 // API client for Javis Studio backend
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export type EmotionMode = "none" | "audio" | "vector" | "text" | "text_from_script";
@@ -45,24 +43,60 @@ export interface TTSSingleResponse {
   duration_secs?: number;
 }
 
+interface GlobalSettings {
+  llmApiUrl: string;
+  llmToken: string;
+  llmModel: string;
+  ttsApiUrl: string;
+  ttsToken: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function getSettings(): GlobalSettings {
+  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "" };
+  const saved = localStorage.getItem("javis_studio_settings");
+  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "" };
+  try {
+    return JSON.parse(saved);
+  } catch {
+    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "" };
+  }
+}
+
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
+  const settings = getSettings();
+
+  // Use local proxy for all /api/studio calls
+  const res = await fetch(path, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-llm-url": settings.llmApiUrl,
+      "x-llm-token": settings.llmToken,
+      "x-llm-model": settings.llmModel,
+      "x-tts-url": settings.ttsApiUrl,
+      "x-tts-token": settings.ttsToken,
+    },
     body: JSON.stringify(body),
   });
+
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(err.detail ?? "Request failed");
+    throw new Error(err.detail || err.error || "Request failed");
   }
   return res.json();
 }
 
 export function audioUrl(path: string): string {
-  if (path.startsWith("http")) return path;
-  return `${API_BASE}${path}`;
+  if (path.startsWith("http") || path.startsWith("data:")) return path;
+  // If it's a relative path from our own public/audio, return as is
+  if (path.startsWith("/audio/")) return path;
+
+  const settings = getSettings();
+  const base = settings.ttsApiUrl || "http://localhost:8000";
+  const baseUrl = base.endsWith("/") ? base.slice(0, -1) : base;
+  return `${baseUrl}${path.startsWith("/") ? "" : "/"}${path}`;
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────
