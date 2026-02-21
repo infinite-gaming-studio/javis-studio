@@ -47,16 +47,16 @@ export default function VoiceSettings({ value, onChange }: Props) {
 
     return (
         <div className="space-y-4">
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 语音设置
             </label>
 
             {/* Speaker reference audio */}
             <div className="space-y-1.5">
-                <p className="text-xs text-slate-400">参考说话人音频 <span className="text-red-400">*</span></p>
+                <p className="text-xs text-slate-500">参考说话人音频 <span className="text-red-400">*</span></p>
                 <button
                     onClick={() => spkRef.current?.click()}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 hover:border-violet-500 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-violet-400 text-sm text-slate-600 hover:text-violet-600 transition-all shadow-sm hover:shadow"
                 >
                     <span>🎙️</span>
                     <span className="truncate">{spkName || "上传参考音频 (.wav / .mp3)"}</span>
@@ -66,15 +66,15 @@ export default function VoiceSettings({ value, onChange }: Props) {
 
             {/* Emotion mode tabs */}
             <div className="space-y-2">
-                <p className="text-xs text-slate-400">情感控制模式</p>
+                <p className="text-xs text-slate-500">情感控制模式</p>
                 <div className="grid grid-cols-1 gap-1">
                     {EMOTION_MODES.map((m) => (
                         <button
                             key={m.value}
                             onClick={() => update({ emotion_mode: m.value })}
                             className={`flex items-center gap-3 px-3 py-2 rounded-lg border text-sm transition-all ${value.emotion_mode === m.value
-                                ? "bg-violet-600/20 border-violet-500 text-violet-300"
-                                : "bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500"
+                                ? "bg-violet-50/80 border-violet-300 text-violet-700 shadow-sm ring-1 ring-violet-500/10"
+                                : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:shadow-sm"
                                 }`}
                         >
                             <span className="font-medium flex-1 text-left">{m.label}</span>
@@ -87,10 +87,10 @@ export default function VoiceSettings({ value, onChange }: Props) {
             {/* Emotion audio ref */}
             {value.emotion_mode === "audio" && (
                 <div className="space-y-1.5">
-                    <p className="text-xs text-slate-400">情感参考音频</p>
+                    <p className="text-xs text-slate-500">情感参考音频</p>
                     <button
                         onClick={() => emoRef.current?.click()}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800 border border-slate-600 hover:border-violet-500 text-sm text-slate-400 hover:text-slate-200 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-violet-400 text-sm text-slate-600 hover:text-violet-600 transition-all shadow-sm hover:shadow"
                     >
                         <span>🎭</span>
                         <span className="truncate">{emoName || "上传情感参考音频"}</span>
@@ -102,7 +102,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                             <span className="text-violet-400 font-mono">{value.emo_alpha.toFixed(2)}</span>
                         </div>
                         <input
-                            type="range" min={0} max={1} step={0.05}
+                            type="range" min={0} max={2} step={0.05}
                             value={value.emo_alpha}
                             onChange={(e) => update({ emo_alpha: parseFloat(e.target.value) })}
                             className="w-full accent-violet-500"
@@ -114,12 +114,12 @@ export default function VoiceSettings({ value, onChange }: Props) {
             {/* Emotion vector sliders */}
             {value.emotion_mode === "vector" && (
                 <div className="space-y-2">
-                    <p className="text-xs text-slate-400">情感向量调节</p>
+                    <p className="text-xs text-slate-500">情感向量调节</p>
                     {EMOTION_LABELS.map((label, i) => (
                         <div key={i} className="flex items-center gap-2">
                             <span className="text-xs text-slate-500 w-10 text-right">{label}</span>
                             <input
-                                type="range" min={0} max={1} step={0.05}
+                                type="range" min={0} max={2} step={0.05}
                                 value={emoVec[i]}
                                 onChange={(e) => {
                                     const next = [...emoVec];
@@ -128,7 +128,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                                 }}
                                 className={`flex-1 accent-violet-500`}
                             />
-                            <span className={`text-xs font-mono w-8 text-right ${EMOTION_KEYS.map((_, j) => j === i ? "text-violet-400" : "text-slate-600")[i]}`}>
+                            <span className={`text-xs font-mono w-8 text-right ${EMOTION_KEYS.map((_, j) => j === i ? "text-violet-400" : "text-slate-500")[i]}`}>
                                 {emoVec[i].toFixed(2)}
                             </span>
                         </div>
@@ -139,12 +139,12 @@ export default function VoiceSettings({ value, onChange }: Props) {
             {/* Emotion text */}
             {(value.emotion_mode === "text") && (
                 <div className="space-y-1.5">
-                    <p className="text-xs text-slate-400">情感描述文字</p>
+                    <p className="text-xs text-slate-500">情感描述文字</p>
                     <input
                         value={value.emo_text ?? ""}
                         onChange={(e) => update({ emo_text: e.target.value })}
                         placeholder="e.g. 充满激情与希望"
-                        className="w-full rounded-lg bg-slate-800 border border-slate-600 focus:border-violet-500 outline-none text-sm text-slate-200 px-3 py-2"
+                        className="w-full rounded-lg bg-white border border-slate-200 focus:border-violet-400 focus:ring-4 focus:ring-violet-500/10 outline-none text-sm text-slate-700 px-3 py-2 transition-all shadow-inner"
                     />
                     <div className="space-y-1">
                         <div className="flex justify-between text-xs text-slate-500">
@@ -152,7 +152,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                             <span className="text-violet-400 font-mono">{value.emo_alpha.toFixed(2)}</span>
                         </div>
                         <input
-                            type="range" min={0} max={1} step={0.05}
+                            type="range" min={0} max={2} step={0.05}
                             value={value.emo_alpha}
                             onChange={(e) => update({ emo_alpha: parseFloat(e.target.value) })}
                             className="w-full accent-violet-500"
@@ -165,11 +165,11 @@ export default function VoiceSettings({ value, onChange }: Props) {
             <label className="flex items-center gap-2 cursor-pointer">
                 <div
                     onClick={() => update({ use_random: !value.use_random })}
-                    className={`w-10 h-5 rounded-full relative transition-colors ${value.use_random ? "bg-violet-600" : "bg-slate-700"}`}
+                    className={`w-10 h-5 rounded-full relative transition-colors ${value.use_random ? "bg-violet-600" : "bg-slate-200"}`}
                 >
                     <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${value.use_random ? "translate-x-5" : "translate-x-0.5"}`} />
                 </div>
-                <span className="text-xs text-slate-400">启用随机采样 (降低声音复现度)</span>
+                <span className="text-xs text-slate-500">启用随机采样 (降低声音复现度)</span>
             </label>
         </div>
     );

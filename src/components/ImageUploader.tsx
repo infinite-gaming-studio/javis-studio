@@ -39,7 +39,7 @@ export default function ImageUploader({ images, onChange }: Props) {
 
     return (
         <div className="space-y-3">
-            <label className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+            <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 输入图片
             </label>
 
@@ -53,14 +53,14 @@ export default function ImageUploader({ images, onChange }: Props) {
           relative flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed 
           cursor-pointer transition-all duration-200 py-6 px-4 text-center
           ${dragging
-                        ? "border-violet-400 bg-violet-500/10 scale-[1.01]"
-                        : "border-slate-600 hover:border-slate-400 bg-slate-800/40"
+                        ? "border-violet-400 bg-violet-50 shadow-inner scale-[1.01]"
+                        : "border-slate-300 hover:border-violet-300 bg-white/50 hover:bg-violet-50/50"
                     }
         `}
             >
                 <span className="text-3xl">🖼️</span>
-                <p className="text-sm text-slate-400">拖放图片或点击上传</p>
-                <p className="text-xs text-slate-600">PNG / JPG / WEBP</p>
+                <p className="text-sm text-slate-500">拖放图片或点击上传</p>
+                <p className="text-xs text-slate-500">PNG / JPG / WEBP</p>
                 <input
                     id="img-input"
                     type="file"
@@ -75,7 +75,7 @@ export default function ImageUploader({ images, onChange }: Props) {
             {images.length > 0 && (
                 <div className="grid grid-cols-2 gap-2">
                     {images.map((src, i) => (
-                        <div key={i} className="relative group rounded-lg overflow-hidden aspect-square bg-slate-800">
+                        <div key={i} className="relative group rounded-lg overflow-hidden aspect-square bg-slate-100">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                                 src={src}
