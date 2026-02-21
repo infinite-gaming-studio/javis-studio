@@ -149,14 +149,14 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 font-sans selection:bg-violet-100 selection:text-violet-900">
+    <div className="min-h-screen bg-gradient-to-br from-[#f0f9ff] via-[#ecfeff] to-[#e0f2fe] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-white/60 bg-white/70 backdrop-blur-md shadow-sm">
         <div className="max-w-screen-xl mx-auto flex items-center gap-3 h-14 px-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
             <Mic2 className="w-4.5 h-4.5 text-white" />
           </div>
-          <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">
+          <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
             Javis Studio
           </span>
           <span className="text-xs text-slate-400 font-medium ml-1">AI 旁白生成工作台</span>
@@ -164,7 +164,7 @@ export default function StudioPage() {
             <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all duration-300 ${step === "error" ? "bg-red-50 text-red-600 border-red-100" :
               step === "done" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
                 step === "idle" ? "bg-slate-50 text-slate-500 border-slate-100" :
-                  "bg-violet-50 text-violet-600 border-violet-100 animate-pulse shadow-sm shadow-violet-500/10"
+                  "bg-cyan-50 text-cyan-600 border-cyan-100 animate-pulse shadow-sm shadow-cyan-500/10"
               }`}>
               {step === "error" ? <AlertCircle className="w-3 h-3" /> :
                 step === "done" ? <CheckCircle2 className="w-3 h-3" /> :
@@ -191,22 +191,21 @@ export default function StudioPage() {
       {/* Main layout */}
       <main className="max-w-screen-xl mx-auto px-6 py-6 grid grid-cols-12 gap-5 h-[calc(100vh-3.5rem)] overflow-hidden">
 
-        {/* ── Left Panel: Inputs ── */}
-        <aside className="col-span-3 space-y-5 overflow-y-auto pr-1 flex flex-col custom-scroll">
-          <div className="space-y-5 flex-1 pb-4">
-            <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4">
+        <aside className="col-span-3 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-cyan-200/40 p-4 space-y-5 min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto custom-scroll pr-1 space-y-5">
               <ImageUploader images={images} onChange={setImages} />
-            </div>
-            <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4">
               <PromptEditor topic={topic} onTopicChange={setTopic} value={prompt} onChange={setPrompt} />
+            </div>
+            <div className="pt-4 border-t border-slate-200/60">
               <button
                 onClick={handleGenerateScript}
                 disabled={!canGenScript || step === "scripting"}
                 className="group w-full py-2.5 rounded-xl text-sm text-white font-semibold transition-all duration-300
-                           bg-gradient-to-r from-violet-500 to-indigo-500
-                           hover:from-violet-600 hover:to-indigo-600
+                           bg-gradient-to-r from-cyan-500 to-blue-500
+                           hover:from-cyan-600 hover:to-blue-600
                            disabled:opacity-50 disabled:cursor-not-allowed
-                           shadow-md shadow-violet-500/20 hover:shadow-lg hover:shadow-violet-500/40
+                           shadow-md shadow-cyan-500/20 hover:shadow-lg hover:shadow-cyan-500/40
                            flex items-center justify-center gap-2"
               >
                 {step === "scripting" ? (
@@ -220,9 +219,8 @@ export default function StudioPage() {
           </div>
         </aside>
 
-        {/* ── Middle Panel: Script ── */}
         <section className="col-span-5 flex flex-col min-h-0">
-          <div className="flex-1 flex flex-col rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4 min-h-0">
+          <div className="flex-1 flex flex-col rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-cyan-200/40 p-4 space-y-4 min-h-0">
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
               <ScriptPreview
                 segments={script}
@@ -280,13 +278,10 @@ export default function StudioPage() {
           </div>
         </section>
 
-        {/* ── Right Panel: Voice & Audio ── */}
         <aside className="col-span-4 flex flex-col min-h-0">
-          <div className="flex-1 space-y-4 overflow-y-auto pr-1 custom-scroll pb-4">
-            <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4">
+          <div className="flex-1 flex flex-col rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-cyan-200/40 p-4 space-y-4 min-h-0 overflow-hidden">
+            <div className="flex-1 overflow-y-auto custom-scroll pr-1 space-y-4">
               <VoiceSettingsPanel value={voiceSettings} onChange={setVoiceSettings} />
-            </div>
-            <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4">
               <AudioPlayer
                 segments={segments}
                 finalAudioUrl={finalAudioUrl}

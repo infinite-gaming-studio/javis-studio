@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { Play, Pause, Download, Volume2, Music, Loader2 } from "lucide-react";
 import { AudioSegmentResult, audioUrl } from "@/lib/api";
 
 interface Props {
@@ -31,21 +32,17 @@ function SegmentPlayer({ seg }: { seg: AudioSegmentResult }) {
     }, []);
 
     return (
-        <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-slate-200 shadow-sm hover:shadow-md hover:border-violet-300 px-3 py-2.5 transition-all duration-200">
+        <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-slate-200 shadow-sm hover:shadow-md hover:border-cyan-300 px-3 py-2.5 transition-all duration-200">
             <audio ref={audioRef} src={audioUrl(seg.audio_url)} preload="metadata" />
 
             <button
                 onClick={toggle}
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${playing ? "bg-violet-500 shadow-md shadow-violet-500/30 text-white" : "bg-white border border-slate-200 text-slate-500 hover:border-violet-300 hover:text-violet-600 shadow-sm"}`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${playing ? "bg-cyan-500 shadow-md shadow-cyan-500/30 text-white" : "bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"}`}
             >
                 {playing ? (
-                    <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 24 24">
-                        <rect x="6" y="4" width="4" height="16" rx="1" /><rect x="14" y="4" width="4" height="16" rx="1" />
-                    </svg>
+                    <Pause className="w-3 h-3 fill-current" />
                 ) : (
-                    <svg className="w-3 h-3 text-white pl-0.5" fill="currentColor" viewBox="0 0 24 24">
-                        <path d="M8 5v14l11-7z" />
-                    </svg>
+                    <Play className="w-3 h-3 fill-current ml-0.5" />
                 )}
             </button>
 
@@ -53,7 +50,7 @@ function SegmentPlayer({ seg }: { seg: AudioSegmentResult }) {
                 <p className="text-xs text-slate-500 truncate">{seg.text}</p>
                 <div className="relative w-full h-1.5 rounded-full bg-slate-200 overflow-hidden">
                     <div
-                        className="absolute left-0 top-0 h-full bg-violet-500 rounded-full transition-all duration-100"
+                        className="absolute left-0 top-0 h-full bg-cyan-500 rounded-full transition-all duration-100"
                         style={{ width: `${progress}%` }}
                     />
                 </div>
@@ -75,12 +72,12 @@ export default function AudioPlayer({ segments, finalAudioUrl, loading }: Props)
             <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">音频输出</label>
                 <div className="flex items-center gap-3 py-8 justify-center">
-                    <div className="flex gap-1">
+                    <div className="flex gap-1 items-end h-6">
                         {[0, 1, 2, 3].map((i) => (
-                            <span key={i} className="w-1 bg-violet-400 rounded-full animate-pulse" style={{ height: `${12 + i * 6}px`, animationDelay: `${i * 0.1}s` }} />
+                            <span key={i} className="w-1 bg-cyan-400 rounded-full animate-bounce" style={{ height: `${12 + i * 4}px`, animationDelay: `${i * 0.15}s` }} />
                         ))}
                     </div>
-                    <span className="text-slate-500 text-sm">正在合成语音…</span>
+                    <span className="text-slate-500 text-sm font-medium">正在合成语音…</span>
                 </div>
             </div>
         );
@@ -90,9 +87,9 @@ export default function AudioPlayer({ segments, finalAudioUrl, loading }: Props)
         return (
             <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">音频输出</label>
-                <div className="rounded-xl border border-dashed border-slate-300 py-10 bg-slate-50/50 flex flex-col items-center gap-2 text-slate-500">
-                    <span className="text-3xl">🔊</span>
-                    <p className="text-sm">生成音频后在这里播放</p>
+                <div className="rounded-xl border border-dashed border-slate-300 py-10 bg-slate-50/50 flex flex-col items-center gap-2 text-slate-400">
+                    <Volume2 className="w-10 h-10 mb-2 opacity-20" />
+                    <p className="text-sm font-medium">生成音频后在这里播放</p>
                 </div>
             </div>
         );
@@ -106,8 +103,11 @@ export default function AudioPlayer({ segments, finalAudioUrl, loading }: Props)
 
             {/* Final combined audio */}
             {finalAudioUrl && (
-                <div className="rounded-xl bg-gradient-to-r from-violet-50/80 to-indigo-50/80 border border-violet-200 p-3 space-y-2 shadow-sm">
-                    <p className="text-xs font-semibold text-violet-300">🎵 完整合并音频</p>
+                <div className="rounded-xl bg-gradient-to-br from-cyan-50 via-blue-50 to-indigo-50 border border-cyan-100 p-4 space-y-3 shadow-md">
+                    <div className="flex items-center gap-2">
+                        <Music className="w-4 h-4 text-cyan-600" />
+                        <p className="text-xs font-bold text-cyan-700 uppercase tracking-tight">完整合并音频</p>
+                    </div>
                     <audio
                         controls
                         src={audioUrl(finalAudioUrl)}
@@ -116,9 +116,10 @@ export default function AudioPlayer({ segments, finalAudioUrl, loading }: Props)
                     <a
                         href={audioUrl(finalAudioUrl)}
                         download="javis-studio-output.mp3"
-                        className="inline-flex items-center gap-1.5 text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-cyan-100 text-[11px] font-bold text-cyan-600 hover:bg-cyan-50 hover:border-cyan-200 transition-all shadow-sm"
                     >
-                        ⬇️ 下载 MP3
+                        <Download className="w-3 h-3" />
+                        下载 MP3
                     </a>
                 </div>
             )}
