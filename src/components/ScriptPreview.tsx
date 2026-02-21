@@ -17,7 +17,9 @@ import {
     Maximize2,
     Minimize2,
     Scissors,
-    Wand2
+    Wand2,
+    Volume2,
+    Loader2
 } from "lucide-react";
 
 const EMOTION_COLORS: Record<string, string> = {
@@ -36,6 +38,9 @@ interface Props {
     segments: ScriptSegment[];
     onChange: (segments: ScriptSegment[]) => void;
     loading?: boolean;
+    onGenerateSegment?: (index: number) => Promise<void>;
+    generatingSegments?: number[];
+    canGenerate?: boolean;
 }
 
 // 智能分割文本 - 按目标段数和最大字符数分割
@@ -103,7 +108,7 @@ function smartSplitText(text: string, targetSegments: number, maxCharsPerSegment
     return result.filter(s => s.length > 0);
 }
 
-export default function ScriptPreview({ segments, onChange, loading }: Props) {
+export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false }: Props) {
     const [manualCount, setManualCount] = useState<number>(5);
     const [expandedSegment, setExpandedSegment] = useState<number | null>(null);
     const [showSplitModal, setShowSplitModal] = useState(false);
@@ -409,6 +414,25 @@ export default function ScriptPreview({ segments, onChange, loading }: Props) {
                                 </span>
 
                                 <div className="ml-auto flex items-center gap-1">
+                                    {/* 重新生成音频按钮 */}
+                                    {onGenerateSegment && canGenerate && (
+                                        <button
+                                            onClick={() => onGenerateSegment(seg.index)}
+                                            disabled={generatingSegments.includes(seg.index)}
+                                            className={`p-1.5 rounded-lg transition-all ${
+                                                generatingSegments.includes(seg.index)
+                                                    ? 'text-cyan-600 bg-cyan-100 cursor-wait'
+                                                    : 'text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 opacity-0 group-hover:opacity-100'
+                                            }`}
+                                            title={generatingSegments.includes(seg.index) ? "生成中..." : "重新生成此段音频"}
+                                        >
+                                            {generatingSegments.includes(seg.index) ? (
+                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                            ) : (
+                                                <Volume2 className="w-3.5 h-3.5" />
+                                            )}
+                                        </button>
+                                    )}
                                     {/* 展开/收缩按钮 */}
                                     <button
                                         onClick={() => setExpandedSegment(isExpanded ? null : seg.index)}

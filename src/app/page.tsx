@@ -118,6 +118,9 @@ export default function StudioPage() {
     failed: [],
   });
 
+  // 单个段落生成状态
+  const [generatingSegments, setGeneratingSegments] = useState<number[]>([]);
+
   // 加载历史记录
   useEffect(() => {
     setHistory(loadHistory());
@@ -406,6 +409,42 @@ export default function StudioPage() {
     }, 2000);
   };
 
+  // 生成单个段落的音频
+  const handleGenerateSegment = async (segmentIndex: number) => {
+    const seg = script.find(s => s.index === segmentIndex);
+    if (!seg) return;
+
+    setGeneratingSegments(prev => [...prev, segmentIndex]);
+    setError("");
+
+    try {
+      const result = await synthesizeSegment(seg);
+
+      if (result.success) {
+        // 更新对应序号的音频
+        setSegments(prev => {
+          const existingIndex = prev.findIndex(s => s.segment_index === segmentIndex);
+          if (existingIndex >= 0) {
+            // 覆盖原有音频
+            const updated = [...prev];
+            updated[existingIndex] = result.result;
+            return updated;
+          } else {
+            // 插入新音频并保持排序
+            const newSegments = [...prev, result.result];
+            return newSegments.sort((a, b) => a.segment_index - b.segment_index);
+          }
+        });
+      } else {
+        setError(`第 ${segmentIndex + 1} 段音频生成失败: ${result.error}`);
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : `第 ${segmentIndex + 1} 段音频生成失败`);
+    } finally {
+      setGeneratingSegments(prev => prev.filter(idx => idx !== segmentIndex));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f0f9ff] via-[#ecfeff] to-[#e0f2fe] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900">
       {/* Header */}
@@ -516,6 +555,9 @@ export default function StudioPage() {
                 segments={script}
                 onChange={setScript}
                 loading={step === "scripting"}
+                onGenerateSegment={handleGenerateSegment}
+                generatingSegments={generatingSegments}
+                canGenerate={canGenAudio}
               />
             </div>
 
