@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import nodeFs from "fs/promises";
 import nodePath from "path";
-// @ts-expect-error uuid types not installed
 import { v4 as uuidv4 } from "uuid";
 
 /**
