@@ -8,6 +8,18 @@ import {
   ttsSingle,
 } from "@/lib/api";
 
+import {
+  Sparkles,
+  Settings,
+  Mic2,
+  Square,
+  Play,
+  AlertCircle,
+  Clock,
+  CheckCircle2,
+  XCircle
+} from "lucide-react";
+
 import ImageUploader from "@/components/ImageUploader";
 import PromptEditor from "@/components/PromptEditor";
 import ScriptPreview from "@/components/ScriptPreview";
@@ -137,42 +149,51 @@ export default function StudioPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 font-sans">
+    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 font-sans selection:bg-violet-100 selection:text-violet-900">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-white/60 bg-white/70 backdrop-blur-md shadow-sm">
         <div className="max-w-screen-xl mx-auto flex items-center gap-3 h-14 px-6">
-          <span className="text-xl">🎙️</span>
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
+            <Mic2 className="w-4.5 h-4.5 text-white" />
+          </div>
           <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">
             Javis Studio
           </span>
-          <span className="text-xs text-slate-500 ml-1">AI 旁白生成工作台</span>
-          <div className="ml-auto flex items-center gap-2">
-            <span className={`w-2 h-2 rounded-full ${step === "error" ? "bg-red-400" : step === "done" ? "bg-emerald-400" : step === "idle" ? "bg-slate-400" : "bg-violet-500 animate-pulse"}`} />
-            <span className="text-xs text-slate-500">
+          <span className="text-xs text-slate-400 font-medium ml-1">AI 旁白生成工作台</span>
+          <div className="ml-auto flex items-center gap-3">
+            <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all duration-300 ${step === "error" ? "bg-red-50 text-red-600 border-red-100" :
+              step === "done" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                step === "idle" ? "bg-slate-50 text-slate-500 border-slate-100" :
+                  "bg-violet-50 text-violet-600 border-violet-100 animate-pulse shadow-sm shadow-violet-500/10"
+              }`}>
+              {step === "error" ? <AlertCircle className="w-3 h-3" /> :
+                step === "done" ? <CheckCircle2 className="w-3 h-3" /> :
+                  step === "idle" ? <Clock className="w-3 h-3" /> :
+                    <Sparkles className="w-3 h-3 animate-pulse" />}
               {step === "idle" && "就绪"}
               {step === "scripting" && "AI 生成脚本中…"}
               {step === "synthesizing" && "语音合成中…"}
               {step === "done" && "完成"}
               {step === "error" && "出错了"}
-            </span>
-            <div className="w-px h-4 bg-slate-300 mx-2" />
+            </div>
+            <div className="w-px h-4 bg-slate-200" />
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className="p-1.5 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors border border-transparent hover:border-slate-200"
+              className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all duration-200 border border-transparent hover:border-slate-200 shadow-none hover:shadow-sm"
               title="全局设置"
             >
-              ⚙️
+              <Settings className="w-4 h-4" />
             </button>
           </div>
         </div>
       </header>
 
       {/* Main layout */}
-      <main className="max-w-screen-xl mx-auto px-6 py-6 grid grid-cols-12 gap-5">
+      <main className="max-w-screen-xl mx-auto px-6 py-6 grid grid-cols-12 gap-5 h-[calc(100vh-3.5rem)] overflow-hidden">
 
         {/* ── Left Panel: Inputs ── */}
-        <aside className="col-span-3 space-y-5">
-          <div className="sticky top-[72px] space-y-5">
+        <aside className="col-span-3 space-y-5 overflow-y-auto pr-1 flex flex-col custom-scroll">
+          <div className="space-y-5 flex-1 pb-4">
             <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4">
               <ImageUploader images={images} onChange={setImages} />
             </div>
@@ -181,54 +202,69 @@ export default function StudioPage() {
               <button
                 onClick={handleGenerateScript}
                 disabled={!canGenScript || step === "scripting"}
-                className="w-full py-2.5 rounded-xl text-sm text-white font-semibold transition-all duration-200
+                className="group w-full py-2.5 rounded-xl text-sm text-white font-semibold transition-all duration-300
                            bg-gradient-to-r from-violet-500 to-indigo-500
                            hover:from-violet-600 hover:to-indigo-600
                            disabled:opacity-50 disabled:cursor-not-allowed
-                           shadow-md shadow-violet-500/20 hover:shadow-lg hover:shadow-violet-500/40"
+                           shadow-md shadow-violet-500/20 hover:shadow-lg hover:shadow-violet-500/40
+                           flex items-center justify-center gap-2"
               >
-                {step === "scripting" ? "生成中…" : "✨ 生成旁白脚本"}
+                {step === "scripting" ? (
+                  <Sparkles className="w-4 h-4 animate-spin-slow" />
+                ) : (
+                  <Sparkles className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                )}
+                {step === "scripting" ? "生成中…" : "生成旁白脚本"}
               </button>
             </div>
           </div>
         </aside>
 
         {/* ── Middle Panel: Script ── */}
-        <section className="col-span-5">
-          <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4">
-            <ScriptPreview
-              segments={script}
-              onChange={setScript}
-              loading={step === "scripting"}
-            />
+        <section className="col-span-5 flex flex-col min-h-0">
+          <div className="flex-1 flex flex-col rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4 space-y-4 min-h-0">
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <ScriptPreview
+                segments={script}
+                onChange={setScript}
+                loading={step === "scripting"}
+              />
+            </div>
 
             {/* Generate audio CTA */}
             {script.length > 0 && (
-              <div className="pt-2 border-t border-slate-200">
+              <div className="pt-2 border-t border-slate-200/60 mt-auto">
                 {!canGenAudio && (
-                  <p className="text-xs text-amber-400 mb-2">⚠️ 请先在右侧上传参考说话人音频</p>
+                  <div className="flex items-center gap-2 text-amber-500 mb-2 px-1">
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <p className="text-[11px] font-bold uppercase tracking-tight">请先在右侧上传参考说话人音频</p>
+                  </div>
                 )}
                 {step === "synthesizing" ? (
                   <button
                     onClick={handleCancelGeneration}
-                    className="w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-200
+                    className="w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-300
                                bg-gradient-to-r from-red-500 to-rose-500
                                hover:from-red-600 hover:to-rose-600
-                               shadow-md shadow-red-500/20 hover:shadow-lg hover:shadow-red-500/40 animate-pulse"
+                               shadow-md shadow-red-500/20 hover:shadow-lg hover-shadow-red-500/40 animate-pulse
+                               flex items-center justify-center gap-2"
                   >
-                    ⏹ 取消生成
+                    <Square className="w-4 h-4 fill-white" />
+                    取消生成
                   </button>
                 ) : (
                   <button
                     onClick={handleGenerateAudio}
                     disabled={!canGenAudio}
-                    className="w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-200
+                    className="group w-full py-3 rounded-xl text-sm text-white font-semibold transition-all duration-300
                                bg-gradient-to-r from-emerald-500 to-teal-500
                                hover:from-emerald-600 hover:to-teal-600
                                disabled:opacity-50 disabled:cursor-not-allowed
-                               shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/40"
+                               shadow-md shadow-emerald-500/20 hover:shadow-lg hover:shadow-emerald-500/40
+                               flex items-center justify-center gap-2"
                   >
-                    🔊 {segments.length > 0 && segments.length < script.length ? "继续合成语音" : "合成全部语音"}
+                    <Play className="w-4 h-4 group-hover:scale-110 transition-transform fill-white" />
+                    {segments.length > 0 && segments.length < script.length ? "继续合成语音" : "合成全部语音"}
                   </button>
                 )}
               </div>
@@ -236,16 +272,17 @@ export default function StudioPage() {
 
             {/* Error */}
             {step === "error" && error && (
-              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600">
-                ❌ {error}
+              <div className="rounded-xl bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-600 flex items-center gap-2">
+                <XCircle className="w-4 h-4 shrink-0" />
+                {error}
               </div>
             )}
           </div>
         </section>
 
         {/* ── Right Panel: Voice & Audio ── */}
-        <aside className="col-span-4 space-y-4">
-          <div className="sticky top-[72px] space-y-4">
+        <aside className="col-span-4 flex flex-col min-h-0">
+          <div className="flex-1 space-y-4 overflow-y-auto pr-1 custom-scroll pb-4">
             <div className="rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-slate-200/40 p-4">
               <VoiceSettingsPanel value={voiceSettings} onChange={setVoiceSettings} />
             </div>
