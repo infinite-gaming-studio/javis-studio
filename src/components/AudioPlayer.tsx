@@ -1,13 +1,29 @@
 "use client";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Play, Pause, Download, Volume2, Loader2, Package } from "lucide-react";
+import { Play, Pause, Download, Volume2, Loader2, Package, Clock, BarChart3, AlertCircle, RefreshCw } from "lucide-react";
 import JSZip from "jszip";
-import { AudioSegmentResult, audioUrl } from "@/lib/api";
+import { AudioSegmentResult, ScriptSegment, audioUrl } from "@/lib/api";
+
+interface FailedSegment {
+    segment: ScriptSegment;
+    error: string;
+    retryCount: number;
+}
+
+interface SynthesisProgress {
+    total: number;
+    current: number;
+    segmentTimes: number[];
+    startTime: number | null;
+    failed: FailedSegment[];
+}
 
 interface Props {
     segments: AudioSegmentResult[];
     loading?: boolean;
     projectName?: string;
+    synthesisProgress?: SynthesisProgress;
+    onRetryFailed?: () => void;
 }
 
 // 下载单个音频文件
@@ -26,6 +42,137 @@ async function downloadAudio(url: string, filename: string) {
     } catch (error) {
         console.error('下载失败:', error);
     }
+}
+
+// 格式化毫秒为可读时间
+function formatDuration(ms: number): string {
+    if (ms < 1000) return `${ms}ms`;
+    if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
+    const mins = Math.floor(ms / 60000);
+    const secs = ((ms % 60000) / 1000).toFixed(0);
+    return `${mins}分${secs}秒`;
+}
+
+// 进度显示组件
+function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgress; onRetryFailed?: () => void }) {
+    const { total, current, segmentTimes, startTime, failed } = progress;
+    const failedCount = failed.length;
+    // current 代表已尝试的段数（成功 + 失败）
+    const attemptedCount = current;
+    const successCount = attemptedCount - failedCount;
+    const percentage = total > 0 ? (successCount / total) * 100 : 0;
+    
+    // 计算统计数据
+    const totalElapsed = startTime ? Date.now() - startTime : 0;
+    const avgTime = segmentTimes.length > 0 
+        ? segmentTimes.reduce((a, b) => a + b, 0) / segmentTimes.length 
+        : 0;
+    const remainingSegments = total - successCount;
+    const estimatedRemaining = avgTime > 0 ? avgTime * remainingSegments : 0;
+    
+    // 当前段耗时（最后一段）
+    const currentSegmentTime = segmentTimes.length > 0 
+        ? segmentTimes[segmentTimes.length - 1] 
+        : 0;
+
+    return (
+        <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl border border-cyan-200 p-4 space-y-3">
+            {/* 标题和总体进度 */}
+            <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center shadow-sm">
+                        <BarChart3 className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-700">合成进度</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                    <Clock className="w-3 h-3" />
+                    <span>已用 {formatDuration(totalElapsed)}</span>
+                </div>
+            </div>
+
+            {/* 进度条 */}
+            <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                        <span className="font-medium text-cyan-700">
+                            成功 {successCount} / {total} 段
+                        </span>
+                        {failedCount > 0 && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">
+                                {failedCount} 段失败
+                            </span>
+                        )}
+                    </div>
+                    <span className="text-slate-500">{percentage.toFixed(0)}%</span>
+                </div>
+                <div className="h-2.5 bg-white rounded-full overflow-hidden border border-cyan-100 shadow-inner">
+                    <div 
+                        className="h-full bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full transition-all duration-500 ease-out shadow-sm"
+                        style={{ width: `${percentage}%` }}
+                    />
+                </div>
+            </div>
+
+            {/* 统计信息网格 */}
+            <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
+                    <p className="text-[10px] text-slate-500 mb-0.5">本段耗时</p>
+                    <p className="text-xs font-semibold text-cyan-700">
+                        {currentSegmentTime > 0 ? formatDuration(currentSegmentTime) : "--"}
+                    </p>
+                </div>
+                <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
+                    <p className="text-[10px] text-slate-500 mb-0.5">平均耗时</p>
+                    <p className="text-xs font-semibold text-blue-700">
+                        {avgTime > 0 ? formatDuration(avgTime) : "--"}
+                    </p>
+                </div>
+                <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
+                    <p className="text-[10px] text-slate-500 mb-0.5">预计剩余</p>
+                    <p className="text-xs font-semibold text-emerald-600">
+                        {estimatedRemaining > 0 && failedCount === 0 ? formatDuration(estimatedRemaining) : "--"}
+                    </p>
+                </div>
+            </div>
+
+            {/* 失败段落信息 */}
+            {failedCount > 0 && (
+                <div className="bg-red-50/70 rounded-lg p-3 border border-red-200/50 space-y-2">
+                    <div className="flex items-center gap-1.5 text-xs text-red-600">
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span className="font-medium">{failedCount} 段合成失败</span>
+                    </div>
+                    <div className="space-y-1 max-h-20 overflow-y-auto custom-scroll">
+                        {failed.map((f) => (
+                            <div key={f.segment.index} className="text-[10px] text-red-500 truncate flex items-center gap-1">
+                                <span className="font-mono text-red-400">#{f.segment.index}</span>
+                                <span className="truncate flex-1">{f.segment.text.slice(0, 20)}...</span>
+                            </div>
+                        ))}
+                    </div>
+                    {onRetryFailed && (
+                        <button
+                            onClick={onRetryFailed}
+                            className="w-full py-1.5 rounded-lg text-xs font-medium text-white bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 transition-all flex items-center justify-center gap-1.5 shadow-sm"
+                        >
+                            <RefreshCw className="w-3 h-3" />
+                            重试失败段落
+                        </button>
+                    )}
+                </div>
+            )}
+
+            {/* 已完成提示 */}
+            {successCount === total && total > 0 && failedCount === 0 && (
+                <div className="text-center py-1">
+                    <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
+                        ✓ 全部分段合成完成
+                    </span>
+                </div>
+            )}
+        </div>
+    );
 }
 
 // 批量下载所有音频为压缩包
@@ -200,7 +347,7 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
     );
 }
 
-export default function AudioPlayer({ segments, loading, projectName }: Props) {
+export default function AudioPlayer({ segments, loading, projectName, synthesisProgress, onRetryFailed }: Props) {
     const [isDownloading, setIsDownloading] = useState(false);
 
     const handleBatchDownload = async () => {
@@ -209,6 +356,15 @@ export default function AudioPlayer({ segments, loading, projectName }: Props) {
         await downloadAllAudiosAsZip(segments, projectName);
         setIsDownloading(false);
     };
+
+    if (loading && synthesisProgress && synthesisProgress.total > 0) {
+        return (
+            <div className="space-y-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">音频输出</label>
+                <ProgressDisplay progress={synthesisProgress} onRetryFailed={onRetryFailed} />
+            </div>
+        );
+    }
 
     if (loading) {
         return (

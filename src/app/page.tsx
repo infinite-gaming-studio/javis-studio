@@ -103,6 +103,21 @@ export default function StudioPage() {
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // 分段合成进度
+  const [synthesisProgress, setSynthesisProgress] = useState<{
+    total: number;
+    current: number;
+    segmentTimes: number[]; // 每段耗时（毫秒）
+    startTime: number | null;
+    failed: { segment: ScriptSegment; error: string; retryCount: number }[];
+  }>({
+    total: 0,
+    current: 0,
+    segmentTimes: [],
+    startTime: null,
+    failed: [],
+  });
+
   // 加载历史记录
   useEffect(() => {
     setHistory(loadHistory());
@@ -197,13 +212,57 @@ export default function StudioPage() {
     }
   };
 
+  // 合成单段音频，支持重试
+  const synthesizeSegment = async (
+    seg: ScriptSegment,
+    maxRetries = 3
+  ): Promise<{ success: true; result: AudioSegmentResult; duration: number } | { success: false; error: string }> => {
+    let lastError = "";
+    
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        const res = await ttsSingle(seg.text, voiceSettings);
+        const generated: AudioSegmentResult = {
+          segment_index: seg.index,
+          text: seg.text,
+          audio_url: res.audio_url,
+          duration_secs: res.duration_secs
+        };
+        return { success: true, result: generated, duration: 0 }; // duration 由调用方计算
+      } catch (e: unknown) {
+        lastError = e instanceof Error ? e.message : "合成失败";
+        if (attempt < maxRetries - 1) {
+          // 等待后重试（指数退避）
+          await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt)));
+        }
+      }
+    }
+    
+    return { success: false, error: lastError };
+  };
+
   const handleGenerateAudio = async () => {
     setError("");
     setStep("synthesizing");
 
+    // Initialize progress tracking
+    const remainingSegments = script.filter(seg => {
+      const existing = segments.find(s => s.segment_index === seg.index);
+      return !existing || existing.text !== seg.text;
+    });
+
+    setSynthesisProgress({
+      total: remainingSegments.length,
+      current: 0,
+      segmentTimes: [],
+      startTime: Date.now(),
+      failed: [],
+    });
+
     // Create an abort controller to support cancellation
     abortControllerRef.current = new AbortController();
     const newSegments = [...segments];
+    const failedSegments: { segment: ScriptSegment; error: string; retryCount: number }[] = [];
 
     try {
       for (const seg of script) {
@@ -216,21 +275,29 @@ export default function StudioPage() {
           continue; // Already generated this text
         }
 
-        const res = await ttsSingle(seg.text, voiceSettings);
+        const segmentStartTime = Date.now();
+        const result = await synthesizeSegment(seg);
+        const segmentDuration = Date.now() - segmentStartTime;
 
-        const generated: AudioSegmentResult = {
-          segment_index: seg.index,
-          text: seg.text,
-          audio_url: res.audio_url,
-          duration_secs: res.duration_secs
-        };
-
-        const eIdx = newSegments.findIndex(s => s.segment_index === seg.index);
-        if (eIdx >= 0) {
-          newSegments[eIdx] = generated;
+        if (result.success) {
+          const eIdx = newSegments.findIndex(s => s.segment_index === seg.index);
+          if (eIdx >= 0) {
+            newSegments[eIdx] = result.result;
+          } else {
+            newSegments.push(result.result);
+          }
         } else {
-          newSegments.push(generated);
+          // 记录失败的段
+          failedSegments.push({ segment: seg, error: result.error, retryCount: 3 });
         }
+
+        // Update progress (无论成功失败，current 都增加)
+        setSynthesisProgress(prev => ({
+          ...prev,
+          current: prev.current + 1,
+          segmentTimes: [...prev.segmentTimes, segmentDuration],
+          failed: [...failedSegments],
+        }));
 
         // Progressively update state
         setSegments([...newSegments]);
@@ -241,7 +308,80 @@ export default function StudioPage() {
         return;
       }
 
-      setStep("done");
+      // 如果有失败的段落，不标记为完成，保持在 synthesizing 状态让用户重试
+      if (failedSegments.length > 0) {
+        setError(`${failedSegments.length} 段音频合成失败，可点击下方"重试失败段落"按钮继续`);
+        setStep("error");
+      } else {
+        setStep("done");
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "音频合成失败");
+      setStep("error");
+    } finally {
+      abortControllerRef.current = null;
+    }
+  };
+
+  // 重试失败的段落
+  const handleRetryFailed = async () => {
+    if (synthesisProgress.failed.length === 0) return;
+    
+    setError("");
+    setStep("synthesizing");
+
+    // Create an abort controller to support cancellation
+    abortControllerRef.current = new AbortController();
+    const newSegments = [...segments];
+    const stillFailed: typeof synthesisProgress.failed = [];
+
+    try {
+      for (const failed of synthesisProgress.failed) {
+        if (abortControllerRef.current.signal.aborted) {
+          break;
+        }
+
+        const segmentStartTime = Date.now();
+        const result = await synthesizeSegment(failed.segment);
+        const segmentDuration = Date.now() - segmentStartTime;
+
+        if (result.success) {
+          const eIdx = newSegments.findIndex(s => s.segment_index === failed.segment.index);
+          if (eIdx >= 0) {
+            newSegments[eIdx] = result.result;
+          } else {
+            newSegments.push(result.result);
+          }
+
+          // Update progress - 从失败列表中移除，但不增加 current（已经在第一次尝试时算过了）
+          setSynthesisProgress(prev => ({
+            ...prev,
+            segmentTimes: [...prev.segmentTimes, segmentDuration],
+            failed: prev.failed.filter(f => f.segment.index !== failed.segment.index),
+          }));
+
+          setSegments([...newSegments]);
+        } else {
+          // 仍然失败
+          stillFailed.push({ ...failed, retryCount: failed.retryCount + 3 });
+          setSynthesisProgress(prev => ({
+            ...prev,
+            failed: stillFailed,
+          }));
+        }
+      }
+
+      if (abortControllerRef.current.signal.aborted) {
+        setStep("idle");
+        return;
+      }
+
+      if (stillFailed.length > 0) {
+        setError(`${stillFailed.length} 段音频仍然失败，可再次尝试重试`);
+        setStep("error");
+      } else {
+        setStep("done");
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "音频合成失败");
       setStep("error");
@@ -254,6 +394,16 @@ export default function StudioPage() {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
+    // Reset progress after a delay so user can see final state
+    setTimeout(() => {
+      setSynthesisProgress({
+        total: 0,
+        current: 0,
+        segmentTimes: [],
+        startTime: null,
+        failed: [],
+      });
+    }, 2000);
   };
 
   return (
@@ -434,8 +584,10 @@ export default function StudioPage() {
               <VoiceSettingsPanel value={voiceSettings} onChange={setVoiceSettings} />
               <AudioPlayer
                 segments={segments}
-                loading={step === "synthesizing"}
+                loading={step === "synthesizing" || (step === "error" && synthesisProgress.failed.length > 0)}
                 projectName={projectName}
+                synthesisProgress={synthesisProgress}
+                onRetryFailed={handleRetryFailed}
               />
             </div>
           </div>
