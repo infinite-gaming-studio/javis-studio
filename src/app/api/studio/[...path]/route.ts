@@ -101,11 +101,21 @@ export async function POST(
             };
             if (llmToken) headers["Authorization"] = `Bearer ${llmToken}`;
 
-            const llmRes = await fetch(targetUrl, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(llmPayload),
-            });
+            let llmRes: Response;
+            try {
+                llmRes = await fetch(targetUrl, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify(llmPayload),
+                });
+            } catch (fetchErr: any) {
+                console.error(`[Studio] LLM fetch failed:`, fetchErr);
+                const errMsg = fetchErr?.message || fetchErr?.cause?.message || String(fetchErr);
+                return NextResponse.json(
+                    { error: `连接 LLM 服务失败: ${errMsg}。请检查 API URL 是否正确 (${targetUrl})` },
+                    { status: 502 }
+                );
+            }
 
             if (!llmRes.ok) {
                 const errText = await llmRes.text().catch(() => "");
@@ -221,11 +231,21 @@ export async function POST(
             const ttsHeaders: Record<string, string> = {};
             if (ttsToken) ttsHeaders["Authorization"] = `Bearer ${ttsToken}`;
 
-            const ttsRes = await fetch(targetUrl, {
-                method: "POST",
-                headers: ttsHeaders,  // let fetch set Content-Type + boundary for FormData
-                body: formData,
-            });
+            let ttsRes: Response;
+            try {
+                ttsRes = await fetch(targetUrl, {
+                    method: "POST",
+                    headers: ttsHeaders,  // let fetch set Content-Type + boundary for FormData
+                    body: formData,
+                });
+            } catch (fetchErr: any) {
+                console.error(`[Studio] TTS fetch failed:`, fetchErr);
+                const errMsg = fetchErr?.message || fetchErr?.cause?.message || String(fetchErr);
+                return NextResponse.json(
+                    { error: `连接 TTS 服务失败: ${errMsg}。请检查 API URL 是否正确 (${targetUrl})` },
+                    { status: 502 }
+                );
+            }
 
             if (!ttsRes.ok) {
                 const errText = await ttsRes.text().catch(() => "");
@@ -273,11 +293,21 @@ export async function POST(
             };
             if (ttsToken) headers["Authorization"] = `Bearer ${ttsToken}`;
 
-            const genRes = await fetch(targetUrl, {
-                method: "POST",
-                headers,
-                body: JSON.stringify(body),
-            });
+            let genRes: Response;
+            try {
+                genRes = await fetch(targetUrl, {
+                    method: "POST",
+                    headers,
+                    body: JSON.stringify(body),
+                });
+            } catch (fetchErr: any) {
+                console.error(`[Studio] Generate fetch failed:`, fetchErr);
+                const errMsg = fetchErr?.message || fetchErr?.cause?.message || String(fetchErr);
+                return NextResponse.json(
+                    { error: `连接生成服务失败: ${errMsg}。请检查 API URL 是否正确 (${targetUrl})` },
+                    { status: 502 }
+                );
+            }
 
             if (!genRes.ok) {
                 const errText = await genRes.text().catch(() => "");
