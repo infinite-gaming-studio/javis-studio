@@ -32,3 +32,97 @@ body {
 .custom-scroll::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* AI 跑马灯效果 - 卡片边框 */
+.ai-glow-card {
+  position: relative;
+}
+
+.ai-border-glow {
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    #22d3ee 60deg,
+    #3b82f6 120deg,
+    #8b5cf6 180deg,
+    #3b82f6 240deg,
+    #22d3ee 300deg,
+    transparent 360deg
+  );
+  animation: ai-rotate 3s linear infinite;
+  filter: blur(8px);
+  opacity: 0.6;
+}
+
+.ai-border-glow::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: linear-gradient(135deg, rgba(34, 211, 238, 0.1), rgba(59, 130, 246, 0.1));
+  border-radius: inherit;
+}
+
+@keyframes ai-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* AI 进度条渐变 */
+.ai-progress-gradient {
+  background: linear-gradient(90deg, #22d3ee, #3b82f6, #8b5cf6, #3b82f6, #22d3ee);
+  background-size: 200% 100%;
+  animation: ai-gradient-flow 2s linear infinite;
+}
+
+@keyframes ai-gradient-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+/* AI 进度条光效 */
+.ai-progress-glow {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.4) 50%,
+    transparent 100%
+  );
+  animation: ai-shine 1.5s ease-in-out infinite;
+}
+
+@keyframes ai-shine {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* AI 进度条背景微光 */
+.ai-progress-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(34, 211, 238, 0.1),
+    transparent
+  );
+  animation: ai-shimmer 2s ease-in-out infinite;
+}
+
+@keyframes ai-shimmer {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}

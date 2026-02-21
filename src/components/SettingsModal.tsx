@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 
 export interface SettingsConfig {
     llmApiUrl: string;
@@ -22,6 +22,13 @@ const DEFAULT_CONFIG: SettingsConfig = {
     ttsToken: "",
 };
 
+interface NvidiaModel {
+    id: string;
+    object: string;
+    created: number;
+    owned_by: string;
+}
+
 interface Props {
     isOpen: boolean;
     onClose: () => void;
@@ -32,11 +39,18 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     const [isMounted, setIsMounted] = useState(false);
     const [showModels, setShowModels] = useState(false);
     const modelDropdownRef = useRef<HTMLDivElement>(null);
+    const modelInputRef = useRef<HTMLInputElement>(null);
 
     const [llmTestStatus, setLlmTestStatus] = useState<TestStatus>("idle");
     const [llmTestMsg, setLlmTestMsg] = useState("");
     const [ttsTestStatus, setTtsTestStatus] = useState<TestStatus>("idle");
     const [ttsTestMsg, setTtsTestMsg] = useState("");
+
+    // Model fetching states
+    const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
+    const [modelSearchQuery, setModelSearchQuery] = useState("");
+    const [isFetchingModels, setIsFetchingModels] = useState(false);
+    const [fetchModelsError, setFetchModelsError] = useState("");
 
     useEffect(() => {
         // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -52,6 +66,76 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Filter models based on search query (fuzzy search)
+    const filteredModels = useMemo(() => {
+        const query = modelSearchQuery.toLowerCase().trim();
+        if (!query) return availableModels;
+        
+        // Support multiple keywords separated by spaces
+        const keywords = query.split(/\s+/).filter(k => k.length > 0);
+        
+        return availableModels.filter(model => {
+            const modelId = model.id.toLowerCase();
+            const ownedBy = model.owned_by?.toLowerCase() || '';
+            // All keywords must match somewhere (in id or owned_by)
+            return keywords.every(keyword => 
+                modelId.includes(keyword) || ownedBy.includes(keyword)
+            );
+        });
+    }, [availableModels, modelSearchQuery]);
+
+    // Fetch models from NVIDIA API
+    const fetchModels = async () => {
+        if (!config.llmApiUrl || !config.llmToken) {
+            setFetchModelsError("请先填写 API 地址和 Token");
+            return;
+        }
+
+        setIsFetchingModels(true);
+        setFetchModelsError("");
+        
+        try {
+            let baseUrl = config.llmApiUrl.trim();
+            // Remove trailing slash
+            baseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+            // Remove /chat/completions or /completions suffix
+            baseUrl = baseUrl.replace(/\/chat\/completions$/, "").replace(/\/completions$/, "");
+            
+            const modelsUrl = `${baseUrl}/models`;
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: modelsUrl,
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Bearer ${config.llmToken}`,
+                    }
+                })
+            });
+
+            const data = await res.json();
+            
+            if (data.ok && data.data?.data) {
+                const models: NvidiaModel[] = data.data.data;
+                // Remove duplicate models by id (keep first occurrence)
+                const uniqueModels = Array.from(new Map(models.map(m => [m.id, m])).values());
+                setAvailableModels(uniqueModels);
+                // Merge with saved models
+                const modelIds = models.map(m => m.id);
+                const mergedModels = Array.from(new Set([...modelIds, ...config.savedModels]));
+                setConfig(prev => ({ ...prev, savedModels: mergedModels }));
+            } else {
+                setFetchModelsError(data.errorDetail || "获取模型列表失败");
+            }
+        } catch (e: unknown) {
+            setFetchModelsError(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        } finally {
+            setIsFetchingModels(false);
+        }
+    };
 
     useEffect(() => {
         if (isOpen) {
@@ -264,9 +348,40 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                                 />
                             </div>
                             <div className="relative" ref={modelDropdownRef}>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-xs font-medium text-slate-500">模型名称 (Model)</label>
+                                    <button
+                                        type="button"
+                                        onClick={fetchModels}
+                                        disabled={isFetchingModels || !config.llmApiUrl || !config.llmToken}
+                                        className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                    >
+                                        {isFetchingModels ? (
+                                            <>
+                                                <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                                </svg>
+                                                获取中...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                                                    <path d="M3 3v5h5" />
+                                                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                                                    <path d="M16 16h5v5" />
+                                                </svg>
+                                                获取模型列表
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                                {fetchModelsError && (
+                                    <div className="text-[10px] text-red-500 mb-1">{fetchModelsError}</div>
+                                )}
                                 <div className="flex border border-slate-200 rounded-lg bg-white overflow-hidden focus-within:ring-2 focus-within:ring-violet-500 focus-within:border-transparent transition-all">
                                     <input
+                                        ref={modelInputRef}
                                         type="text"
                                         value={config.llmModel || ""}
                                         onChange={e => setConfig({ ...config, llmModel: e.target.value })}
@@ -282,31 +397,94 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                                         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
                                     </button>
                                 </div>
-                                {showModels && (config.savedModels?.length > 0) && (
-                                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                        {(config.savedModels || []).map(model => (
-                                            <div key={model} className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0" onClick={() => {
-                                                setConfig({ ...config, llmModel: model });
-                                                setShowModels(false);
-                                            }}>
-                                                <span className="text-sm text-slate-700 flex-grow">
-                                                    {model}
-                                                </span>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setConfig({
-                                                            ...config,
-                                                            savedModels: (config.savedModels || []).filter(m => m !== model)
-                                                        });
-                                                    }}
-                                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:!text-red-500 p-1 rounded-md hover:bg-red-50 transition-all"
-                                                    title="删除该模型"
-                                                >
-                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                </button>
+                                {showModels && (
+                                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
+                                        {/* Search input */}
+                                        <div className="p-2 border-b border-slate-100 bg-slate-50">
+                                            <div className="relative">
+                                                <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                    <circle cx="11" cy="11" r="8" />
+                                                    <path d="m21 21-4.3-4.3" />
+                                                </svg>
+                                                <input
+                                                    type="text"
+                                                    value={modelSearchQuery}
+                                                    onChange={e => setModelSearchQuery(e.target.value)}
+                                                    placeholder="搜索模型..."
+                                                    className="w-full text-xs pl-7 pr-3 py-1.5 border border-slate-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                />
                                             </div>
-                                        ))}
+                                        </div>
+                                        {/* Models list */}
+                                        <div className="overflow-y-auto max-h-48">
+                                            {filteredModels.length > 0 ? (
+                                                filteredModels.map(model => (
+                                                    <div 
+                                                        key={model.id} 
+                                                        className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0"
+                                                        onClick={() => {
+                                                            setConfig({ ...config, llmModel: model.id });
+                                                            setShowModels(false);
+                                                            setModelSearchQuery("");
+                                                        }}
+                                                    >
+                                                        <div className="flex flex-col flex-grow min-w-0">
+                                                            <span className="text-sm text-slate-700 truncate" title={model.id}>
+                                                                {model.id}
+                                                            </span>
+                                                            {model.owned_by && model.owned_by !== model.id && (
+                                                                <span className="text-[10px] text-slate-400 truncate">
+                                                                    {model.owned_by}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {config.llmModel === model.id && (
+                                                            <svg className="text-violet-500 flex-shrink-0 ml-2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                <path d="M20 6 9 17l-5-5" />
+                                                            </svg>
+                                                        )}
+                                                    </div>
+                                                ))
+                                            ) : availableModels.length > 0 ? (
+                                                <div className="px-3 py-4 text-center text-xs text-slate-400">
+                                                    未找到匹配的模型
+                                                </div>
+                                            ) : config.savedModels?.length > 0 ? (
+                                                // Fallback to saved models if no API models fetched
+                                                config.savedModels.map(model => (
+                                                    <div 
+                                                        key={model} 
+                                                        className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0"
+                                                        onClick={() => {
+                                                            setConfig({ ...config, llmModel: model });
+                                                            setShowModels(false);
+                                                        }}
+                                                    >
+                                                        <span className="text-sm text-slate-700 flex-grow">
+                                                            {model}
+                                                        </span>
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setConfig({
+                                                                    ...config,
+                                                                    savedModels: (config.savedModels || []).filter(m => m !== model)
+                                                                });
+                                                            }}
+                                                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:!text-red-500 p-1 rounded-md hover:bg-red-50 transition-all"
+                                                            title="删除该模型"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                        </button>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="px-3 py-4 text-center text-xs text-slate-400">
+                                                    暂无模型，请点击"获取模型列表"
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

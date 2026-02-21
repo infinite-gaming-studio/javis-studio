@@ -29,16 +29,19 @@ export async function POST(req: Request) {
 
             clearTimeout(timeoutId);
 
-            // We don't always need the body, but let's try to get it for error details
+            // Get response body
+            const text = await res.text().catch(() => "");
+            let responseData = null;
             let errorDetail = "";
+            
+            try {
+                responseData = JSON.parse(text);
+            } catch {
+                responseData = null;
+            }
+            
             if (!res.ok) {
-                const text = await res.text().catch(() => "");
-                try {
-                    const data = JSON.parse(text);
-                    errorDetail = data.error?.message || data.detail || text;
-                } catch {
-                    errorDetail = text.slice(0, 200); // Limit long error messages
-                }
+                errorDetail = responseData?.error?.message || responseData?.detail || text.slice(0, 200);
             }
 
             return NextResponse.json({
@@ -46,6 +49,7 @@ export async function POST(req: Request) {
                 status: res.status,
                 statusText: res.statusText,
                 errorDetail: errorDetail,
+                data: responseData,
             });
         } catch (fetchError: unknown) {
             clearTimeout(timeoutId);
