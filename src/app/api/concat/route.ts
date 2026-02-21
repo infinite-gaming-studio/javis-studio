@@ -2,11 +2,11 @@ import { NextResponse } from "next/server";
 import fs from "fs/promises";
 import path from "path";
 import os from "os";
-// @ts-expect-error
+// @ts-expect-error uuid types not installed
 import { v4 as uuidv4 } from "uuid";
-// @ts-expect-error
+// @ts-expect-error fluent-ffmpeg types not installed
 import ffmpeg from "fluent-ffmpeg";
-// @ts-expect-error
+// @ts-expect-error ffmpeg-static types not installed
 import ffmpegStatic from "ffmpeg-static";
 
 // Configure ffmpeg path if available

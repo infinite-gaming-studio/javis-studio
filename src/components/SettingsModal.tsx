@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export interface SettingsConfig {
     llmApiUrl: string;
     llmToken: string;
+    llmModel: string;
+    savedModels: string[];
     ttsApiUrl: string;
     ttsToken: string;
 }
@@ -12,6 +14,8 @@ export interface SettingsConfig {
 const DEFAULT_CONFIG: SettingsConfig = {
     llmApiUrl: "",
     llmToken: "",
+    llmModel: "gpt-3.5-turbo",
+    savedModels: ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "claude-3-5-sonnet-20240620", "deepseek-chat"],
     ttsApiUrl: "",
     ttsToken: "",
 };
@@ -24,9 +28,22 @@ interface Props {
 export default function SettingsModal({ isOpen, onClose }: Props) {
     const [config, setConfig] = useState<SettingsConfig>(DEFAULT_CONFIG);
     const [isMounted, setIsMounted] = useState(false);
+    const [showModels, setShowModels] = useState(false);
+    const modelDropdownRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsMounted(true);
+    }, []);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (modelDropdownRef.current && !modelDropdownRef.current.contains(event.target as Node)) {
+                setShowModels(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     useEffect(() => {
@@ -34,7 +51,14 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
             const saved = localStorage.getItem("javis_studio_settings");
             if (saved) {
                 try {
-                    setConfig(JSON.parse(saved));
+                    const parsed = JSON.parse(saved);
+                    // eslint-disable-next-line react-hooks/set-state-in-effect
+                    setConfig({
+                        ...DEFAULT_CONFIG,
+                        ...parsed,
+                        savedModels: parsed.savedModels || DEFAULT_CONFIG.savedModels,
+                        llmModel: typeof parsed.llmModel === 'string' ? parsed.llmModel : DEFAULT_CONFIG.llmModel
+                    });
                 } catch (e) {
                     console.error("Failed to parse settings", e);
                 }
@@ -45,7 +69,18 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     if (!isMounted || !isOpen) return null;
 
     const handleSave = () => {
-        localStorage.setItem("javis_studio_settings", JSON.stringify(config));
+        const finalConfig = { ...config };
+
+        if (finalConfig.llmModel?.trim()) {
+            const currentModels = finalConfig.savedModels || [];
+            if (!currentModels.includes(finalConfig.llmModel.trim())) {
+                finalConfig.savedModels = [...currentModels, finalConfig.llmModel.trim()];
+            }
+        } else {
+            finalConfig.savedModels = finalConfig.savedModels || DEFAULT_CONFIG.savedModels;
+        }
+
+        localStorage.setItem("javis_studio_settings", JSON.stringify(finalConfig));
         onClose();
     };
 
@@ -70,7 +105,7 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
             try {
                 const importedConfig = JSON.parse(event.target?.result as string);
                 setConfig({ ...DEFAULT_CONFIG, ...importedConfig });
-            } catch (err) {
+            } catch {
                 alert("导入配置失败，请检查文件格式是否正确");
             }
         };
@@ -113,6 +148,53 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                                     placeholder="sk-..."
                                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                                 />
+                            </div>
+                            <div className="relative" ref={modelDropdownRef}>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">模型名称 (Model)</label>
+                                <div className="flex border border-slate-200 rounded-lg bg-white overflow-hidden focus-within:ring-2 focus-within:ring-violet-500 focus-within:border-transparent transition-all">
+                                    <input
+                                        type="text"
+                                        value={config.llmModel || ""}
+                                        onChange={e => setConfig({ ...config, llmModel: e.target.value })}
+                                        onFocus={() => setShowModels(true)}
+                                        placeholder="输入或选择模型名"
+                                        className="w-full text-sm px-3 py-2 bg-transparent focus:outline-none flex-grow"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowModels(!showModels)}
+                                        className="px-3 py-2 text-slate-400 hover:text-slate-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                                    </button>
+                                </div>
+                                {showModels && (config.savedModels?.length > 0) && (
+                                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                                        {(config.savedModels || []).map(model => (
+                                            <div key={model} className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0" onClick={() => {
+                                                setConfig({ ...config, llmModel: model });
+                                                setShowModels(false);
+                                            }}>
+                                                <span className="text-sm text-slate-700 flex-grow">
+                                                    {model}
+                                                </span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setConfig({
+                                                            ...config,
+                                                            savedModels: (config.savedModels || []).filter(m => m !== model)
+                                                        });
+                                                    }}
+                                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:!text-red-500 p-1 rounded-md hover:bg-red-50 transition-all"
+                                                    title="删除该模型"
+                                                >
+                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
