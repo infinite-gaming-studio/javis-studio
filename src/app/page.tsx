@@ -44,7 +44,6 @@ export default function StudioPage() {
 
   const [script, setScript] = useState<ScriptSegment[]>([]);
   const [segments, setSegments] = useState<AudioSegmentResult[]>([]);
-  const [finalAudioUrl, setFinalAudioUrl] = useState<string | undefined>();
 
   const [step, setStep] = useState<Step>("idle");
   const [error, setError] = useState("");
@@ -59,7 +58,6 @@ export default function StudioPage() {
     setStep("scripting");
     setScript([]);
     setSegments([]);
-    setFinalAudioUrl(undefined);
     try {
       const fullPrompt = topic ? `主题：${topic}\n\n${prompt}` : prompt;
       const res = await generateScript(images, fullPrompt);
@@ -113,24 +111,6 @@ export default function StudioPage() {
       if (abortControllerRef.current.signal.aborted) {
         setStep("idle");
         return;
-      }
-
-      // Concatenate local audio files
-      if (newSegments.length > 0) {
-        newSegments.sort((a, b) => a.segment_index - b.segment_index);
-        const urls = newSegments.map(s => s.audio_url);
-
-        const concatRes = await fetch("/api/concat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ urls })
-        });
-
-        if (!concatRes.ok) {
-          throw new Error("拼接音频失败");
-        }
-        const { url } = await concatRes.json();
-        setFinalAudioUrl(url);
       }
 
       setStep("done");
@@ -294,7 +274,6 @@ export default function StudioPage() {
               <VoiceSettingsPanel value={voiceSettings} onChange={setVoiceSettings} />
               <AudioPlayer
                 segments={segments}
-                finalAudioUrl={finalAudioUrl}
                 loading={step === "synthesizing"}
               />
             </div>
