@@ -418,7 +418,7 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                             ref={(el) => {
                                 if (el) segmentRefs.current.set(seg.index, el);
                             }}
-                            className={`group relative rounded-2xl backdrop-blur-md border shadow-sm hover:shadow-lg hover:shadow-cyan-200/20 p-4 space-y-3 transition-all duration-300 ${
+                            className={`group relative rounded-2xl backdrop-blur-md border shadow-sm hover:shadow-lg hover:shadow-cyan-200/20 py-4 px-6 space-y-3 transition-all duration-300 ${
                                 isPlaying 
                                     ? 'bg-cyan-50/60 border-cyan-300 ring-2 ring-cyan-200 shadow-lg shadow-cyan-200/30' 
                                     : 'bg-white/40 border-white/60 hover:border-cyan-200'
@@ -514,7 +514,7 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                                 value={seg.text}
                                 onChange={(e) => updateText(seg.index, e.target.value)}
                                 rows={isExpanded ? 8 : (isLongText ? 4 : 2)}
-                                className={`w-full bg-white/50 hover:bg-white/80 focus:bg-white border border-transparent focus:border-cyan-200 rounded-xl p-2.5 text-sm text-slate-800 outline-none resize-none placeholder-slate-400 transition-all duration-200 shadow-none focus:shadow-sm custom-scroll ${!seg.text ? 'border-dashed border-slate-300 bg-cyan-50/30' : ''} ${isExpanded ? 'text-base leading-relaxed' : ''}`}
+                                className={`w-full bg-white/50 hover:bg-white/80 focus:bg-white border border-transparent focus:border-cyan-200 rounded-xl py-3 px-4 text-sm text-slate-800 outline-none resize-none placeholder-slate-400 transition-all duration-200 shadow-none focus:shadow-sm custom-scroll ${!seg.text ? 'border-dashed border-slate-300 bg-cyan-50/30' : ''} ${isExpanded ? 'text-base leading-relaxed' : ''}`}
                                 placeholder={seg.text ? "输入脚本内容..." : "请输入第 " + (seg.index + 1) + " 段的旁白内容..."}
                             />
                             {/* 展开时的额外信息 */}
