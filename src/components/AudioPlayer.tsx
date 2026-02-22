@@ -24,6 +24,8 @@ interface Props {
     projectName?: string;
     synthesisProgress?: SynthesisProgress;
     onRetryFailed?: () => void;
+    onPlayStateChange?: (index: number | null, isPlaying: boolean) => void;
+    currentPlayingIndex?: number | null;
 }
 
 // 下载单个音频文件
@@ -238,10 +240,20 @@ async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectNam
     window.URL.revokeObjectURL(downloadUrl);
 }
 
-function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number }) {
-    const audioRef = useRef<HTMLAudioElement>(null);
+interface SegmentPlayerProps {
+    seg: AudioSegmentResult;
+    index: number;
+    isPlaying: boolean;
+    onPlay: () => void;
+    onPause: () => void;
+    onEnded: () => void;
+    audioRef?: React.RefObject<HTMLAudioElement | null>;
+}
+
+function SegmentPlayer({ seg, index, isPlaying, onPlay, onPause, onEnded, audioRef: externalAudioRef }: SegmentPlayerProps) {
+    const internalAudioRef = useRef<HTMLAudioElement>(null);
+    const audioRef = externalAudioRef || internalAudioRef;
     const progressRef = useRef<HTMLDivElement>(null);
-    const [playing, setPlaying] = useState(false);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
@@ -249,9 +261,21 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
     const toggle = () => {
         const audio = audioRef.current;
         if (!audio) return;
-        if (playing) { audio.pause(); setPlaying(false); }
-        else { audio.play(); setPlaying(true); }
+        if (isPlaying) { audio.pause(); onPause(); }
+        else { audio.play(); onPlay(); }
     };
+
+    // 同步播放状态
+    useEffect(() => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        
+        if (isPlaying && audio.paused) {
+            audio.play().catch(() => {});
+        } else if (!isPlaying && !audio.paused) {
+            audio.pause();
+        }
+    }, [isPlaying, audioRef]);
 
     const seekTo = useCallback((clientX: number) => {
         const audio = audioRef.current;
@@ -274,7 +298,10 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
                 setProgress((audio.currentTime / (audio.duration || 1)) * 100);
             }
         };
-        const onEnd = () => { setPlaying(false); setProgress(0); };
+        const onEnd = () => { 
+            setProgress(0); 
+            onEnded();
+        };
         const onLoaded = () => { setDuration(audio.duration || 0); };
 
         audio.addEventListener("timeupdate", onTime);
@@ -288,7 +315,7 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
             audio.removeEventListener("loadedmetadata", onLoaded);
             audio.removeEventListener("durationchange", onLoaded);
         };
-    }, [isDragging]);
+    }, [isDragging, onEnded, audioRef]);
 
     // 处理进度条拖拽
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -325,14 +352,14 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
     };
 
     return (
-        <div className="flex items-center gap-3 rounded-xl bg-white/80 border border-slate-200 shadow-sm hover:shadow-md hover:border-cyan-300 px-3 py-2.5 transition-all duration-200">
+        <div className={`flex items-center gap-3 rounded-xl bg-white/80 border shadow-sm hover:shadow-md hover:border-cyan-300 px-3 py-2.5 transition-all duration-200 ${isPlaying ? 'border-cyan-400 ring-2 ring-cyan-100' : 'border-slate-200'}`}>
             <audio ref={audioRef} src={audioUrl(seg.audio_url)} preload="metadata" />
 
             <button
                 onClick={toggle}
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${playing ? "bg-cyan-500 shadow-md shadow-cyan-500/30 text-white" : "bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"}`}
+                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isPlaying ? "bg-cyan-500 shadow-md shadow-cyan-500/30 text-white" : "bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"}`}
             >
-                {playing ? (
+                {isPlaying ? (
                     <Pause className="w-3 h-3 fill-current" />
                 ) : (
                     <Play className="w-3 h-3 fill-current ml-0.5" />
@@ -377,8 +404,54 @@ function SegmentPlayer({ seg, index }: { seg: AudioSegmentResult; index: number 
     );
 }
 
-export default function AudioPlayer({ segments, loading, projectName, synthesisProgress, onRetryFailed }: Props) {
+export default function AudioPlayer({ 
+    segments, 
+    loading, 
+    projectName, 
+    synthesisProgress, 
+    onRetryFailed,
+    onPlayStateChange,
+    currentPlayingIndex: externalPlayingIndex
+}: Props) {
     const [isDownloading, setIsDownloading] = useState(false);
+    const [internalPlayingIndex, setInternalPlayingIndex] = useState<number | null>(null);
+    const audioRefs = useRef<Map<number, HTMLAudioElement>>(new Map());
+    
+    // 使用外部或内部的播放索引
+    const currentPlayingIndex = externalPlayingIndex !== undefined ? externalPlayingIndex : internalPlayingIndex;
+    const setCurrentPlayingIndex = (index: number | null) => {
+        if (externalPlayingIndex === undefined) {
+            setInternalPlayingIndex(index);
+        }
+        onPlayStateChange?.(index, index !== null);
+    };
+
+    const handlePlay = (index: number) => {
+        // 暂停其他正在播放的音频
+        if (currentPlayingIndex !== null && currentPlayingIndex !== index) {
+            const otherAudio = audioRefs.current.get(currentPlayingIndex);
+            if (otherAudio) {
+                otherAudio.pause();
+                otherAudio.currentTime = 0;
+            }
+        }
+        setCurrentPlayingIndex(index);
+    };
+
+    const handlePause = () => {
+        setCurrentPlayingIndex(null);
+    };
+
+    const handleEnded = (index: number) => {
+        // 自动播放下一段
+        const nextIndex = index + 1;
+        if (nextIndex < segments.length) {
+            setCurrentPlayingIndex(nextIndex);
+        } else {
+            // 全部播放完毕
+            setCurrentPlayingIndex(null);
+        }
+    };
 
     const handleBatchDownload = async () => {
         if (segments.length === 0 || isDownloading) return;
@@ -448,7 +521,16 @@ export default function AudioPlayer({ segments, loading, projectName, synthesisP
             {/* Per-segment players */}
             <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scroll">
                 {segments.map((seg, idx) => (
-                    <SegmentPlayer key={seg.segment_index} seg={seg} index={idx} />
+                    <SegmentPlayer 
+                        key={seg.segment_index} 
+                        seg={seg} 
+                        index={idx}
+                        isPlaying={currentPlayingIndex === idx}
+                        onPlay={() => handlePlay(idx)}
+                        onPause={handlePause}
+                        onEnded={() => handleEnded(idx)}
+                        audioRef={{ current: audioRefs.current.get(idx) || null } as React.RefObject<HTMLAudioElement | null>}
+                    />
                 ))}
             </div>
         </div>

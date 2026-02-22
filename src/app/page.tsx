@@ -122,6 +122,9 @@ export default function StudioPage() {
   // 单个段落生成状态
   const [generatingSegments, setGeneratingSegments] = useState<number[]>([]);
 
+  // 当前播放的音频段落索引
+  const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
+
   // 加载历史记录
   useEffect(() => {
     setHistory(loadHistory());
@@ -198,7 +201,7 @@ export default function StudioPage() {
   }, []);
 
   const canGenScript = topic.trim().length > 0 || prompt.trim().length > 0;
-  const canGenAudio = script.length > 0 && voiceSettings.spk_audio_prompt;
+  const canGenAudio = script.length > 0 && !!voiceSettings.spk_audio_prompt;
 
   const handleGenerateScript = async () => {
     setError("");
@@ -475,7 +478,7 @@ export default function StudioPage() {
       />
 
       {/* Main layout */}
-      <main className="max-w-screen-xl mx-auto px-6 py-6 grid grid-cols-12 gap-5 h-[calc(100vh-3.5rem)] overflow-hidden">
+      <main className="w-full mx-auto px-6 py-6 grid grid-cols-12 gap-5 h-[calc(100vh-3.5rem)] overflow-hidden">
 
         <aside className="col-span-3 flex flex-col min-h-0">
           <div className="flex-1 flex flex-col rounded-2xl bg-white/80 backdrop-blur-sm border border-white/60 shadow-xl shadow-cyan-200/40 p-4 space-y-4 min-h-0 overflow-hidden">
@@ -547,6 +550,7 @@ export default function StudioPage() {
                 onGenerateSegment={handleGenerateSegment}
                 generatingSegments={generatingSegments}
                 canGenerate={canGenAudio}
+                currentPlayingIndex={currentPlayingIndex}
               />
             </div>
 
@@ -619,6 +623,8 @@ export default function StudioPage() {
                 projectName={projectName}
                 synthesisProgress={synthesisProgress}
                 onRetryFailed={handleRetryFailed}
+                onPlayStateChange={(index, isPlaying) => setCurrentPlayingIndex(isPlaying ? index : null)}
+                currentPlayingIndex={currentPlayingIndex}
               />
             </div>
           </div>

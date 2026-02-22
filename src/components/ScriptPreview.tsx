@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ScriptSegment } from "@/lib/api";
 import {
     FileText,
@@ -41,6 +41,7 @@ interface Props {
     onGenerateSegment?: (index: number) => Promise<void>;
     generatingSegments?: number[];
     canGenerate?: boolean;
+    currentPlayingIndex?: number | null;
 }
 
 // 智能分割文本 - 按目标段数和最大字符数分割
@@ -108,11 +109,27 @@ function smartSplitText(text: string, targetSegments: number, maxCharsPerSegment
     return result.filter(s => s.length > 0);
 }
 
-export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false }: Props) {
+export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false, currentPlayingIndex }: Props) {
     const [manualCount, setManualCount] = useState<number>(5);
     const [expandedSegment, setExpandedSegment] = useState<number | null>(null);
     const [showSplitModal, setShowSplitModal] = useState(false);
     const [splitConfig, setSplitConfig] = useState({ maxChars: 150, targetSegments: 5 });
+    const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    // 自动滚动到当前播放的段落
+    useEffect(() => {
+        if (currentPlayingIndex !== null && currentPlayingIndex !== undefined) {
+            const segmentEl = segmentRefs.current.get(currentPlayingIndex);
+            const containerEl = containerRef.current;
+            if (segmentEl && containerEl) {
+                segmentEl.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                });
+            }
+        }
+    }, [currentPlayingIndex]);
 
     const updateText = (idx: number, text: string) => {
         onChange(segments.map((s) => (s.index === idx ? { ...s, text } : s)));
@@ -387,22 +404,35 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                 </div>
             )}
 
-            <div className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scroll pb-2">
+            <div ref={containerRef} className="flex-1 space-y-3 overflow-y-auto pr-2 custom-scroll pb-2">
                 {segments.map((seg) => {
                     const emotionKey = seg.emotion_hint?.toLowerCase() ?? "neutral";
                     const colorClass = EMOTION_COLORS[emotionKey] ?? EMOTION_COLORS.neutral;
                     const isExpanded = expandedSegment === seg.index;
                     const isLongText = seg.text.length > 100;
+                    const isPlaying = currentPlayingIndex === seg.index;
 
                     return (
                         <div
                             key={seg.index}
-                            className={`group relative rounded-2xl bg-white/40 backdrop-blur-md border border-white/60 shadow-sm hover:shadow-lg hover:shadow-cyan-200/20 p-4 space-y-3 hover:border-cyan-200 transition-all duration-300 ${isExpanded ? 'ring-2 ring-cyan-300 shadow-xl shadow-cyan-200/30' : ''}`}
+                            ref={(el) => {
+                                if (el) segmentRefs.current.set(seg.index, el);
+                            }}
+                            className={`group relative rounded-2xl backdrop-blur-md border shadow-sm hover:shadow-lg hover:shadow-cyan-200/20 p-4 space-y-3 transition-all duration-300 ${
+                                isPlaying 
+                                    ? 'bg-cyan-50/60 border-cyan-300 ring-2 ring-cyan-200 shadow-lg shadow-cyan-200/30' 
+                                    : 'bg-white/40 border-white/60 hover:border-cyan-200'
+                            } ${isExpanded && !isPlaying ? 'ring-2 ring-cyan-300 shadow-xl shadow-cyan-200/30' : ''}`}
                         >
                             <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1 text-xs text-slate-400 font-mono font-bold bg-slate-100/50 px-2 py-0.5 rounded-lg">
-                                    <Hash className="w-3 h-3 text-slate-400" />
+                                <div className={`flex items-center gap-1 text-xs font-mono font-bold px-2 py-0.5 rounded-lg transition-colors ${
+                                    isPlaying 
+                                        ? 'bg-cyan-500 text-white' 
+                                        : 'bg-slate-100/50 text-slate-400'
+                                }`}>
+                                    <Hash className={`w-3 h-3 ${isPlaying ? 'text-white' : 'text-slate-400'}`} />
                                     {seg.index + 1}
+                                    {isPlaying && <span className="ml-1 text-[9px]">▶</span>}
                                 </div>
                                 <div className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border shadow-sm ${colorClass} transition-colors duration-300`}>
                                     <Smile className="w-3 h-3" />
