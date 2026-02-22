@@ -445,45 +445,35 @@ export default function StudioPage() {
     }
   };
 
+import GlobalHeader from "@/components/GlobalHeader";
+
+  const getStatus = () => {
+    if (step === "error") return "error";
+    if (step === "done") return "done";
+    if (step === "idle") return "idle";
+    return "processing";
+  };
+
+  const getStatusText = () => {
+    switch (step) {
+      case "idle": return "就绪";
+      case "scripting": return "AI 生成脚本中…";
+      case "synthesizing": return "语音合成中…";
+      case "done": return "完成";
+      case "error": return "出错了";
+      default: return "就绪";
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f0f9ff] via-[#ecfeff] to-[#e0f2fe] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b border-white/60 bg-white/70 backdrop-blur-md shadow-sm">
-        <div className="max-w-screen-xl mx-auto flex items-center gap-3 h-14 px-6">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-            <Mic2 className="w-4.5 h-4.5 text-white" />
-          </div>
-          <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
-            Javis Studio
-          </span>
-          <span className="text-xs text-slate-400 font-medium ml-1">AI 旁白生成工作台</span>
-          <div className="ml-auto flex items-center gap-3">
-            <div className={`flex items-center gap-2 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all duration-300 ${step === "error" ? "bg-red-50 text-red-600 border-red-100" :
-              step === "done" ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
-                step === "idle" ? "bg-slate-50 text-slate-500 border-slate-100" :
-                  "bg-cyan-50 text-cyan-600 border-cyan-100 animate-pulse shadow-sm shadow-cyan-500/10"
-              }`}>
-              {step === "error" ? <AlertCircle className="w-3 h-3" /> :
-                step === "done" ? <CheckCircle2 className="w-3 h-3" /> :
-                  step === "idle" ? <Clock className="w-3 h-3" /> :
-                    <Sparkles className="w-3 h-3 animate-pulse" />}
-              {step === "idle" && "就绪"}
-              {step === "scripting" && "AI 生成脚本中…"}
-              {step === "synthesizing" && "语音合成中…"}
-              {step === "done" && "完成"}
-              {step === "error" && "出错了"}
-            </div>
-            <div className="w-px h-4 bg-slate-200" />
-            <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-all duration-200 border border-transparent hover:border-slate-200 shadow-none hover:shadow-sm"
-              title="全局设置"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Global Header */}
+      <GlobalHeader
+        showStatus={true}
+        status={getStatus()}
+        statusText={getStatusText()}
+        onSettingsClick={() => setIsSettingsOpen(true)}
+      />
 
       {/* Main layout */}
       <main className="max-w-screen-xl mx-auto px-6 py-6 grid grid-cols-12 gap-5 h-[calc(100vh-3.5rem)] overflow-hidden">
