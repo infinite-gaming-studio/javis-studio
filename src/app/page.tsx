@@ -29,6 +29,7 @@ import ScriptPreview from "@/components/ScriptPreview";
 import VoiceSettingsPanel from "@/components/VoiceSettings";
 import AudioPlayer from "@/components/AudioPlayer";
 import SettingsModal from "@/components/SettingsModal";
+import GlobalHeader from "@/components/GlobalHeader";
 
 const DEFAULT_VOICE: TVoiceSettings = {
   spk_audio_prompt: "",
@@ -444,8 +445,6 @@ export default function StudioPage() {
       setGeneratingSegments(prev => prev.filter(idx => idx !== segmentIndex));
     }
   };
-
-import GlobalHeader from "@/components/GlobalHeader";
 
   const getStatus = () => {
     if (step === "error") return "error";
