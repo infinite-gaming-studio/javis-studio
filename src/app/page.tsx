@@ -20,7 +20,8 @@ import {
   XCircle,
   History,
   Trash2,
-  Save
+  Save,
+  Check
 } from "lucide-react";
 
 import ImageUploader from "@/components/ImageUploader";
@@ -125,6 +126,9 @@ export default function StudioPage() {
   // 当前播放的音频段落索引
   const [currentPlayingIndex, setCurrentPlayingIndex] = useState<number | null>(null);
 
+  // 保存成功提示状态
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
   // 加载历史记录
   useEffect(() => {
     setHistory(loadHistory());
@@ -155,6 +159,10 @@ export default function StudioPage() {
       return updated;
     });
     setCurrentProjectId(newHistory.id);
+
+    // 显示保存成功提示
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
   }, [projectName, topic, prompt, images, script, segments, voiceSettings, currentProjectId, history]);
 
   // 加载历史项目
@@ -530,10 +538,18 @@ export default function StudioPage() {
                 <button
                   onClick={saveCurrentProject}
                   disabled={!projectName.trim() && script.length === 0}
-                  className="flex-1 py-2 rounded-lg text-xs font-medium text-cyan-600 bg-cyan-50 hover:bg-cyan-100 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    saveSuccess
+                      ? 'text-emerald-600 bg-emerald-50'
+                      : 'text-cyan-600 bg-cyan-50 hover:bg-cyan-100'
+                  }`}
                 >
-                  <Save className="w-3.5 h-3.5" />
-                  保存项目
+                  {saveSuccess ? (
+                    <Check className="w-3.5 h-3.5" />
+                  ) : (
+                    <Save className="w-3.5 h-3.5" />
+                  )}
+                  {saveSuccess ? '已保存' : '保存项目'}
                 </button>
               </div>
             </div>
@@ -636,6 +652,22 @@ export default function StudioPage() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+
+      {/* 保存成功提示 */}
+      <div
+        className={`fixed top-4 left-1/2 -translate-x-1/2 z-[60] transition-all duration-300 ${
+          saveSuccess
+            ? 'opacity-100 translate-y-0'
+            : 'opacity-0 -translate-y-4 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-emerald-500 text-white rounded-full shadow-lg shadow-emerald-500/30">
+          <div className="w-5 h-5 rounded-full bg-white/20 flex items-center justify-center">
+            <Check className="w-3 h-3" />
+          </div>
+          <span className="text-sm font-medium">项目已保存</span>
+        </div>
+      </div>
 
       {/* 历史记录弹窗 */}
       {showHistory && (
