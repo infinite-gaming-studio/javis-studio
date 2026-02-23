@@ -244,78 +244,31 @@ interface SegmentPlayerProps {
     seg: AudioSegmentResult;
     index: number;
     isPlaying: boolean;
-    onPlay: () => void;
-    onPause: () => void;
-    onEnded: () => void;
-    audioRef?: React.RefObject<HTMLAudioElement | null>;
+    currentTime: number;
+    duration: number;
+    onToggle: () => void;
+    onSeek: (time: number) => void;
+    audioRef: React.RefObject<HTMLAudioElement | null>;
 }
 
-function SegmentPlayer({ seg, index, isPlaying, onPlay, onPause, onEnded, audioRef: externalAudioRef }: SegmentPlayerProps) {
-    const internalAudioRef = useRef<HTMLAudioElement>(null);
-    const audioRef = externalAudioRef || internalAudioRef;
+function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle, onSeek, audioRef }: SegmentPlayerProps) {
     const progressRef = useRef<HTMLDivElement>(null);
-    const [progress, setProgress] = useState(0);
-    const [duration, setDuration] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
+    const [localProgress, setLocalProgress] = useState(0);
 
-    const toggle = () => {
-        const audio = audioRef.current;
-        if (!audio) return;
-        if (isPlaying) { audio.pause(); onPause(); }
-        else { audio.play(); onPlay(); }
-    };
-
-    // 同步播放状态
-    useEffect(() => {
-        const audio = audioRef.current;
-        if (!audio) return;
-        
-        if (isPlaying && audio.paused) {
-            audio.play().catch(() => {});
-        } else if (!isPlaying && !audio.paused) {
-            audio.pause();
-        }
-    }, [isPlaying, audioRef]);
+    // 计算进度百分比
+    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
     const seekTo = useCallback((clientX: number) => {
-        const audio = audioRef.current;
         const progressBar = progressRef.current;
-        if (!audio || !progressBar || !duration) return;
+        if (!progressBar || !duration) return;
 
         const rect = progressBar.getBoundingClientRect();
         const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
         const newTime = percent * duration;
-        audio.currentTime = newTime;
-        setProgress(percent * 100);
-    }, [duration]);
-
-    useEffect(() => {
-        const audio = audioRef.current;
-        if (!audio) return;
-
-        const onTime = () => {
-            if (!isDragging) {
-                setProgress((audio.currentTime / (audio.duration || 1)) * 100);
-            }
-        };
-        const onEnd = () => { 
-            setProgress(0); 
-            onEnded();
-        };
-        const onLoaded = () => { setDuration(audio.duration || 0); };
-
-        audio.addEventListener("timeupdate", onTime);
-        audio.addEventListener("ended", onEnd);
-        audio.addEventListener("loadedmetadata", onLoaded);
-        audio.addEventListener("durationchange", onLoaded);
-
-        return () => {
-            audio.removeEventListener("timeupdate", onTime);
-            audio.removeEventListener("ended", onEnd);
-            audio.removeEventListener("loadedmetadata", onLoaded);
-            audio.removeEventListener("durationchange", onLoaded);
-        };
-    }, [isDragging, onEnded, audioRef]);
+        onSeek(newTime);
+        setLocalProgress(percent * 100);
+    }, [duration, onSeek]);
 
     // 处理进度条拖拽
     const handleMouseDown = (e: React.MouseEvent) => {
@@ -328,11 +281,20 @@ function SegmentPlayer({ seg, index, isPlaying, onPlay, onPause, onEnded, audioR
         if (!isDragging) return;
 
         const handleMouseMove = (e: MouseEvent) => {
-            seekTo(e.clientX);
+            const progressBar = progressRef.current;
+            if (!progressBar || !duration) return;
+            const rect = progressBar.getBoundingClientRect();
+            const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            setLocalProgress(percent * 100);
         };
 
-        const handleMouseUp = () => {
+        const handleMouseUp = (e: MouseEvent) => {
             setIsDragging(false);
+            const progressBar = progressRef.current;
+            if (!progressBar || !duration) return;
+            const rect = progressBar.getBoundingClientRect();
+            const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            onSeek(percent * duration);
         };
 
         document.addEventListener('mousemove', handleMouseMove);
@@ -342,7 +304,7 @@ function SegmentPlayer({ seg, index, isPlaying, onPlay, onPause, onEnded, audioR
             document.removeEventListener('mousemove', handleMouseMove);
             document.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [isDragging, seekTo]);
+    }, [isDragging, duration, onSeek]);
 
     const formatTime = (seconds: number) => {
         if (!seconds || isNaN(seconds)) return "0:00";
@@ -351,12 +313,15 @@ function SegmentPlayer({ seg, index, isPlaying, onPlay, onPause, onEnded, audioR
         return `${mins}:${secs.toString().padStart(2, '0')}`;
     };
 
+    // 拖拽时显示本地进度，否则显示实际进度
+    const displayProgress = isDragging ? localProgress : progress;
+
     return (
         <div className={`flex items-center gap-3 rounded-xl bg-white/80 border shadow-sm hover:shadow-md hover:border-cyan-300 px-3 py-2.5 transition-all duration-200 ${isPlaying ? 'border-cyan-400 ring-2 ring-cyan-100' : 'border-slate-200'}`}>
             <audio ref={audioRef} src={audioUrl(seg.audio_url)} preload="metadata" />
 
             <button
-                onClick={toggle}
+                onClick={onToggle}
                 className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isPlaying ? "bg-cyan-500 shadow-md shadow-cyan-500/30 text-white" : "bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"}`}
             >
                 {isPlaying ? (
@@ -376,16 +341,16 @@ function SegmentPlayer({ seg, index, isPlaying, onPlay, onPause, onEnded, audioR
                     >
                         <div
                             className="absolute left-0 top-0 h-full bg-cyan-500 rounded-full transition-all"
-                            style={{ width: `${progress}%`, transitionDuration: isDragging ? '0ms' : '100ms' }}
+                            style={{ width: `${displayProgress}%`, transitionDuration: isDragging ? '0ms' : '100ms' }}
                         />
                         {/* 拖拽手柄 */}
                         <div
-                            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-cyan-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity"
-                            style={{ left: `calc(${progress}% - 6px)` }}
+                            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-cyan-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
+                            style={{ left: `calc(${displayProgress}% - 6px)` }}
                         />
                     </div>
-                    <span className="text-[10px] text-slate-400 font-mono w-14 text-right">
-                        {formatTime(audioRef.current?.currentTime || 0)} / {formatTime(duration)}
+                    <span className="text-[10px] text-slate-400 font-mono w-14 text-right tabular-nums">
+                        {formatTime(currentTime)} / {formatTime(duration)}
                     </span>
                 </div>
             </div>
@@ -415,7 +380,10 @@ export default function AudioPlayer({
 }: Props) {
     const [isDownloading, setIsDownloading] = useState(false);
     const [internalPlayingIndex, setInternalPlayingIndex] = useState<number | null>(null);
+    const [currentTimes, setCurrentTimes] = useState<Map<number, number>>(new Map());
+    const [durations, setDurations] = useState<Map<number, number>>(new Map());
     const audioRefs = useRef<Map<number, HTMLAudioElement>>(new Map());
+    const animationFrameRef = useRef<number | null>(null);
     
     // 使用外部或内部的播放索引
     const currentPlayingIndex = externalPlayingIndex !== undefined ? externalPlayingIndex : internalPlayingIndex;
@@ -426,29 +394,70 @@ export default function AudioPlayer({
         onPlayStateChange?.(index, index !== null);
     };
 
-    const handlePlay = (index: number) => {
-        // 暂停其他正在播放的音频
-        if (currentPlayingIndex !== null && currentPlayingIndex !== index) {
-            const otherAudio = audioRefs.current.get(currentPlayingIndex);
-            if (otherAudio) {
-                otherAudio.pause();
-                otherAudio.currentTime = 0;
+    // 统一更新当前播放时间 - 使用 requestAnimationFrame 实现平滑进度
+    useEffect(() => {
+        const updateProgress = () => {
+            if (currentPlayingIndex !== null) {
+                const audio = audioRefs.current.get(currentPlayingIndex);
+                if (audio) {
+                    setCurrentTimes(prev => new Map(prev).set(currentPlayingIndex, audio.currentTime));
+                }
             }
+            animationFrameRef.current = requestAnimationFrame(updateProgress);
+        };
+        
+        animationFrameRef.current = requestAnimationFrame(updateProgress);
+        
+        return () => {
+            if (animationFrameRef.current) {
+                cancelAnimationFrame(animationFrameRef.current);
+            }
+        };
+    }, [currentPlayingIndex]);
+
+    const handleToggle = (index: number) => {
+        const audio = audioRefs.current.get(index);
+        if (!audio) return;
+
+        if (currentPlayingIndex === index) {
+            // 暂停当前播放
+            audio.pause();
+            setCurrentPlayingIndex(null);
+        } else {
+            // 停止其他正在播放的音频
+            if (currentPlayingIndex !== null) {
+                const otherAudio = audioRefs.current.get(currentPlayingIndex);
+                if (otherAudio) {
+                    otherAudio.pause();
+                    otherAudio.currentTime = 0;
+                }
+            }
+            // 播放选中的音频
+            setCurrentPlayingIndex(index);
+            audio.play().catch(err => {
+                console.error('播放失败:', err);
+                setCurrentPlayingIndex(null);
+            });
         }
-        setCurrentPlayingIndex(index);
     };
 
-    const handlePause = () => {
-        setCurrentPlayingIndex(null);
+    const handleSeek = (index: number, time: number) => {
+        const audio = audioRefs.current.get(index);
+        if (!audio) return;
+        
+        audio.currentTime = time;
+        setCurrentTimes(prev => new Map(prev).set(index, time));
     };
 
     const handleEnded = (index: number) => {
+        setCurrentTimes(prev => new Map(prev).set(index, 0));
         // 自动播放下一段
         const nextIndex = index + 1;
         if (nextIndex < segments.length) {
-            setCurrentPlayingIndex(nextIndex);
+            setTimeout(() => {
+                handleToggle(nextIndex);
+            }, 100);
         } else {
-            // 全部播放完毕
             setCurrentPlayingIndex(null);
         }
     };
@@ -459,6 +468,44 @@ export default function AudioPlayer({
         await downloadAllAudiosAsZip(segments, projectName);
         setIsDownloading(false);
     };
+
+    // 为每个音频设置事件监听
+    useEffect(() => {
+        const cleanupFns: (() => void)[] = [];
+
+        segments.forEach((seg, idx) => {
+            const audio = audioRefs.current.get(idx);
+            if (!audio) return;
+
+            const handleLoadedMetadata = () => {
+                setDurations(prev => new Map(prev).set(idx, audio.duration || 0));
+            };
+
+            const handleTimeUpdate = () => {
+                setCurrentTimes(prev => new Map(prev).set(idx, audio.currentTime));
+            };
+
+            const handleEnded = () => {
+                setCurrentTimes(prev => new Map(prev).set(idx, 0));
+            };
+
+            audio.addEventListener('loadedmetadata', handleLoadedMetadata);
+            audio.addEventListener('durationchange', handleLoadedMetadata);
+            audio.addEventListener('timeupdate', handleTimeUpdate);
+            audio.addEventListener('ended', handleEnded);
+
+            cleanupFns.push(() => {
+                audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
+                audio.removeEventListener('durationchange', handleLoadedMetadata);
+                audio.removeEventListener('timeupdate', handleTimeUpdate);
+                audio.removeEventListener('ended', handleEnded);
+            });
+        });
+
+        return () => {
+            cleanupFns.forEach(fn => fn());
+        };
+    }, [segments]);
 
     if (loading && synthesisProgress && synthesisProgress.total > 0) {
         return (
@@ -526,10 +573,15 @@ export default function AudioPlayer({
                         seg={seg} 
                         index={idx}
                         isPlaying={currentPlayingIndex === idx}
-                        onPlay={() => handlePlay(idx)}
-                        onPause={handlePause}
-                        onEnded={() => handleEnded(idx)}
-                        audioRef={{ current: audioRefs.current.get(idx) || null } as React.RefObject<HTMLAudioElement | null>}
+                        currentTime={currentTimes.get(idx) || 0}
+                        duration={durations.get(idx) || 0}
+                        onToggle={() => handleToggle(idx)}
+                        onSeek={(time) => handleSeek(idx, time)}
+                        audioRef={{ 
+                            current: audioRefs.current.get(idx) || null,
+                            get current() { return audioRefs.current.get(idx) || null; },
+                            set current(val) { if (val) audioRefs.current.set(idx, val); }
+                        } as React.RefObject<HTMLAudioElement | null>}
                     />
                 ))}
             </div>
