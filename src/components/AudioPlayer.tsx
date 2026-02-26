@@ -409,11 +409,11 @@ function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle,
     );
 }
 
-export default function AudioPlayer({ 
-    segments, 
-    loading, 
-    projectName, 
-    synthesisProgress, 
+export default function AudioPlayer({
+    segments,
+    loading,
+    projectName,
+    synthesisProgress,
     onRetryFailed,
     onPlayStateChange,
     currentPlayingIndex: externalPlayingIndex
@@ -422,7 +422,9 @@ export default function AudioPlayer({
     const [internalPlayingIndex, setInternalPlayingIndex] = useState<number | null>(null);
     const [currentTimes, setCurrentTimes] = useState<Map<number, number>>(new Map());
     const [durations, setDurations] = useState<Map<number, number>>(new Map());
-    
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const playerRefs = useRef<(HTMLDivElement | null)[]>([]);
+
     const currentPlayingIndex = externalPlayingIndex !== undefined ? externalPlayingIndex : internalPlayingIndex;
     
     const setCurrentPlayingIndex = (index: number | null) => {
@@ -454,6 +456,30 @@ export default function AudioPlayer({
             setCurrentPlayingIndex(null);
         }
     };
+
+    // 滚动到当前播放项
+    useEffect(() => {
+        if (currentPlayingIndex === null) return;
+
+        const container = scrollContainerRef.current;
+        const playerEl = playerRefs.current[currentPlayingIndex];
+
+        if (container && playerEl) {
+            const containerRect = container.getBoundingClientRect();
+            const playerRect = playerEl.getBoundingClientRect();
+
+            // 检查元素是否在可视区域内
+            const isAbove = playerRect.top < containerRect.top;
+            const isBelow = playerRect.bottom > containerRect.bottom;
+
+            if (isAbove || isBelow) {
+                playerEl.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+    }, [currentPlayingIndex]);
 
     const handleBatchDownload = async () => {
         if (segments.length === 0 || isDownloading) return;
@@ -520,20 +546,27 @@ export default function AudioPlayer({
                 </button>
             </div>
 
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scroll">
+            <div 
+                ref={scrollContainerRef}
+                className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scroll"
+            >
                 {segments.map((seg, idx) => (
-                    <SegmentPlayer 
-                        key={seg.segment_index} 
-                        seg={seg} 
-                        index={idx}
-                        isPlaying={currentPlayingIndex === idx}
-                        currentTime={currentTimes.get(idx) || 0}
-                        duration={durations.get(idx) || 0}
-                        onToggle={() => handleToggle(idx)}
-                        onSeek={(time) => handleSeek(idx, time)}
-                        onFinish={() => handleFinish(idx)}
-                        audioRef={{ current: null }}
-                    />
+                    <div 
+                        key={seg.segment_index}
+                        ref={el => { playerRefs.current[idx] = el; }}
+                    >
+                        <SegmentPlayer 
+                            seg={seg} 
+                            index={idx}
+                            isPlaying={currentPlayingIndex === idx}
+                            currentTime={currentTimes.get(idx) || 0}
+                            duration={durations.get(idx) || 0}
+                            onToggle={() => handleToggle(idx)}
+                            onSeek={(time) => handleSeek(idx, time)}
+                            onFinish={() => handleFinish(idx)}
+                            audioRef={{ current: null }}
+                        />
+                    </div>
                 ))}
             </div>
         </div>
