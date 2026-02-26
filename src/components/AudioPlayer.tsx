@@ -449,19 +449,6 @@ export default function AudioPlayer({
         setCurrentTimes(prev => new Map(prev).set(index, time));
     };
 
-    const handleEnded = (index: number) => {
-        setCurrentTimes(prev => new Map(prev).set(index, 0));
-        // 自动播放下一段
-        const nextIndex = index + 1;
-        if (nextIndex < segments.length) {
-            setTimeout(() => {
-                handleToggle(nextIndex);
-            }, 100);
-        } else {
-            setCurrentPlayingIndex(null);
-        }
-    };
-
     const handleBatchDownload = async () => {
         if (segments.length === 0 || isDownloading) return;
         setIsDownloading(true);
@@ -485,20 +472,29 @@ export default function AudioPlayer({
                 setCurrentTimes(prev => new Map(prev).set(idx, audio.currentTime));
             };
 
-            const handleEnded = () => {
+            const handleAudioEnded = () => {
                 setCurrentTimes(prev => new Map(prev).set(idx, 0));
+                // 自动播放下一段
+                const nextIndex = idx + 1;
+                if (nextIndex < segments.length) {
+                    setTimeout(() => {
+                        handleToggle(nextIndex);
+                    }, 100);
+                } else {
+                    setCurrentPlayingIndex(null);
+                }
             };
 
             audio.addEventListener('loadedmetadata', handleLoadedMetadata);
             audio.addEventListener('durationchange', handleLoadedMetadata);
             audio.addEventListener('timeupdate', handleTimeUpdate);
-            audio.addEventListener('ended', handleEnded);
+            audio.addEventListener('ended', handleAudioEnded);
 
             cleanupFns.push(() => {
                 audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
                 audio.removeEventListener('durationchange', handleLoadedMetadata);
                 audio.removeEventListener('timeupdate', handleTimeUpdate);
-                audio.removeEventListener('ended', handleEnded);
+                audio.removeEventListener('ended', handleAudioEnded);
             });
         });
 
