@@ -336,17 +336,21 @@ function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle,
                 <div className="flex items-center gap-2">
                     <div
                         ref={progressRef}
-                        className="relative flex-1 h-2 rounded-full bg-slate-200 overflow-hidden cursor-pointer group"
+                        className="relative flex-1 h-2 rounded-full bg-slate-200 cursor-pointer group"
                         onMouseDown={handleMouseDown}
                     >
+                        {/* 进度条填充 - 使用 margin-right 来限制宽度，避免 overflow-hidden 裁剪手柄 */}
                         <div
                             className="absolute left-0 top-0 h-full bg-cyan-500 rounded-full transition-all"
-                            style={{ width: `${displayProgress}%`, transitionDuration: isDragging ? '0ms' : '100ms' }}
+                            style={{ 
+                                width: `${displayProgress}%`,
+                                transitionDuration: isDragging ? '0ms' : '100ms'
+                            }}
                         />
-                        {/* 拖拽手柄 */}
+                        {/* 拖拽手柄 - 使用 transform translateX(-50%) 确保手柄中心对齐进度位置 */}
                         <div
-                            className="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white border-2 border-cyan-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"
-                            style={{ left: `calc(${displayProgress}% - 6px)` }}
+                            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-cyan-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"
+                            style={{ left: `${displayProgress}%` }}
                         />
                     </div>
                     <span className="text-[10px] text-slate-400 font-mono w-14 text-right tabular-nums">
