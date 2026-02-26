@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Play, Pause, Download, Volume2, Loader2, Package, Clock, BarChart3, AlertCircle, RefreshCw } from "lucide-react";
 import JSZip from "jszip";
+import WaveSurfer from "wavesurfer.js";
 import { AudioSegmentResult, ScriptSegment, audioUrl } from "@/lib/api";
 
 interface FailedSegment {
@@ -55,19 +56,24 @@ function formatDuration(ms: number): string {
     return `${mins}分${secs}秒`;
 }
 
+// 格式化秒数为时间字符串
+function formatTime(seconds: number): string {
+    if (!seconds || isNaN(seconds)) return "0:00";
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
 // 进度显示组件
 function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgress; onRetryFailed?: () => void }) {
     const { total, current, segmentTimes, startTime, failed } = progress;
     const failedCount = failed.length;
-    // current 代表已尝试的段数（成功 + 失败）
     const attemptedCount = current;
     const successCount = attemptedCount - failedCount;
     const percentage = total > 0 ? (successCount / total) * 100 : 0;
     
-    // 用于强制重新渲染以实时更新时间
     const [, forceUpdate] = useState({});
     
-    // 计算统计数据
     const totalElapsed = startTime ? Date.now() - startTime : 0;
     const avgTime = segmentTimes.length > 0 
         ? segmentTimes.reduce((a, b) => a + b, 0) / segmentTimes.length 
@@ -75,19 +81,13 @@ function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgr
     const remainingSegments = total - successCount;
     const estimatedRemaining = avgTime > 0 ? avgTime * remainingSegments : 0;
     
-    // 当前段耗时（最后一段）
     const currentSegmentTime = segmentTimes.length > 0 
         ? segmentTimes[segmentTimes.length - 1] 
         : 0;
 
-    // 实时更新时间显示 - 每100ms更新一次
     useEffect(() => {
         if (!startTime) return;
-        
-        const timer = setInterval(() => {
-            forceUpdate({});
-        }, 100);
-        
+        const timer = setInterval(() => forceUpdate({}), 100);
         return () => clearInterval(timer);
     }, [startTime]);
 
@@ -95,15 +95,9 @@ function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgr
 
     return (
         <div className="relative rounded-xl p-4 space-y-3 overflow-hidden ai-glow-card">
-            {/* AI 跑马灯边框效果 */}
             <div className="absolute inset-0 rounded-xl ai-border-glow" />
-            
-            {/* 背景 */}
             <div className="absolute inset-0 bg-gradient-to-br from-cyan-50/90 to-blue-50/90 rounded-xl" />
-            
-            {/* 内容 */}
             <div className="relative z-10">
-                {/* 标题和总体进度 */}
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center shadow-sm">
@@ -117,7 +111,6 @@ function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgr
                     </div>
                 </div>
 
-                {/* 进度条 */}
                 <div className="space-y-1.5">
                     <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2">
@@ -133,19 +126,16 @@ function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgr
                         <span className="text-slate-500">{percentage.toFixed(0)}%</span>
                     </div>
                     <div className="h-2.5 bg-white/80 rounded-full overflow-hidden border border-cyan-100/50 shadow-inner relative">
-                        {/* 背景光效 */}
                         <div className="absolute inset-0 ai-progress-shimmer" />
                         <div 
                             className="h-full rounded-full transition-all duration-300 ease-out shadow-sm relative overflow-hidden ai-progress-gradient"
                             style={{ width: `${percentage}%` }}
                         >
-                            {/* 进度条内光效 */}
                             <div className="absolute inset-0 ai-progress-glow" />
                         </div>
                     </div>
                 </div>
 
-                {/* 统计信息网格 */}
                 <div className="grid grid-cols-3 gap-2 pt-1">
                     <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
                         <p className="text-[10px] text-slate-500 mb-0.5">本段耗时</p>
@@ -167,7 +157,6 @@ function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgr
                     </div>
                 </div>
 
-                {/* 失败段落信息 */}
                 {failedCount > 0 && (
                     <div className="bg-red-50/70 rounded-lg p-3 border border-red-200/50 space-y-2">
                         <div className="flex items-center gap-1.5 text-xs text-red-600">
@@ -194,7 +183,6 @@ function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgr
                     </div>
                 )}
 
-                {/* 已完成提示 */}
                 {isComplete && (
                     <div className="text-center py-1">
                         <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
@@ -215,7 +203,6 @@ async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectNam
 
     if (!folder) return;
 
-    // 添加每个音频文件到zip
     for (let i = 0; i < segments.length; i++) {
         const seg = segments[i];
         const filename = `segment_${String(i + 1).padStart(2, '0')}.wav`;
@@ -228,7 +215,6 @@ async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectNam
         }
     }
 
-    // 生成并下载zip文件
     const zipBlob = await zip.generateAsync({ type: "blob" });
     const downloadUrl = window.URL.createObjectURL(zipBlob);
     const link = document.createElement('a');
@@ -240,27 +226,6 @@ async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectNam
     window.URL.revokeObjectURL(downloadUrl);
 }
 
-// 音频波形动画组件
-function AudioWaveform({ isPlaying }: { isPlaying: boolean }) {
-    return (
-        <div className="flex items-end gap-[2px] h-4">
-            {[...Array(8)].map((_, i) => (
-                <div
-                    key={i}
-                    className={`w-[3px] bg-cyan-500/70 rounded-full transition-all duration-75 ${
-                        isPlaying ? 'animate-waveform' : ''
-                    }`}
-                    style={{
-                        height: isPlaying ? undefined : '20%',
-                        animationDelay: `${i * 75}ms`,
-                        animationDuration: '600ms'
-                    }}
-                />
-            ))}
-        </div>
-    );
-}
-
 interface SegmentPlayerProps {
     seg: AudioSegmentResult;
     index: number;
@@ -269,177 +234,175 @@ interface SegmentPlayerProps {
     duration: number;
     onToggle: () => void;
     onSeek: (time: number) => void;
-    audioRef: React.RefObject<HTMLAudioElement | null>;
+    onFinish?: () => void;
+    audioRef: React.MutableRefObject<HTMLAudioElement | null>;
 }
 
-function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle, onSeek, audioRef }: SegmentPlayerProps) {
-    const progressRef = useRef<HTMLDivElement>(null);
-    const [isDragging, setIsDragging] = useState(false);
-    const [localProgress, setLocalProgress] = useState(0);
-
-    // 计算进度百分比
-    const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
-
-    const seekTo = useCallback((clientX: number) => {
-        const progressBar = progressRef.current;
-        if (!progressBar || !duration) return;
-
-        const rect = progressBar.getBoundingClientRect();
-        const percent = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-        const newTime = percent * duration;
-        onSeek(newTime);
-        setLocalProgress(percent * 100);
-    }, [duration, onSeek]);
-
-    // 处理进度条拖拽
-    const handleMouseDown = (e: React.MouseEvent) => {
-        e.preventDefault();
-        setIsDragging(true);
-        seekTo(e.clientX);
-    };
-
+function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle, onSeek, onFinish, audioRef }: SegmentPlayerProps) {
+    const waveformRef = useRef<HTMLDivElement>(null);
+    const wavesurferRef = useRef<WaveSurfer | null>(null);
+    const [isReady, setIsReady] = useState(false);
+    const [wsDuration, setWsDuration] = useState(0);
+    const onFinishRef = useRef(onFinish);
+    
+    // 保持最新的 onFinish 回调引用
     useEffect(() => {
-        if (!isDragging) return;
+        onFinishRef.current = onFinish;
+    }, [onFinish]);
 
-        const handleMouseMove = (e: MouseEvent) => {
-            const progressBar = progressRef.current;
-            if (!progressBar || !duration) return;
-            const rect = progressBar.getBoundingClientRect();
-            const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            setLocalProgress(percent * 100);
-        };
+    // 初始化 WaveSurfer
+    useEffect(() => {
+        if (!waveformRef.current) return;
 
-        const handleMouseUp = (e: MouseEvent) => {
-            setIsDragging(false);
-            const progressBar = progressRef.current;
-            if (!progressBar || !duration) return;
-            const rect = progressBar.getBoundingClientRect();
-            const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            onSeek(percent * duration);
-        };
+        const ws = WaveSurfer.create({
+            container: waveformRef.current,
+            url: audioUrl(seg.audio_url),
+            waveColor: '#cbd5e1',
+            progressColor: '#06b6d4',
+            cursorColor: '#06b6d4',
+            barWidth: 2,
+            barGap: 1,
+            barRadius: 2,
+            height: 40,
+            normalize: true,
+            interact: true,
+        });
 
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
+        wavesurferRef.current = ws;
+
+        ws.on('ready', () => {
+            setIsReady(true);
+            setWsDuration(ws.getDuration());
+        });
+
+        ws.on('audioprocess', (time: number) => {
+            onSeek(time);
+        });
+
+        ws.on('seeking', (time: number) => {
+            onSeek(time);
+        });
+
+        ws.on('finish', () => {
+            console.log(`[WaveSurfer] Audio ${index} finished, calling onFinish`);
+            onFinishRef.current?.();
+        });
 
         return () => {
-            document.removeEventListener('mousemove', handleMouseMove);
-            document.removeEventListener('mouseup', handleMouseUp);
+            ws.destroy();
+            wavesurferRef.current = null;
         };
-    }, [isDragging, duration, onSeek]);
+    }, [seg.audio_url, index]); // 移除 onFinish 依赖
 
-    const formatTime = (seconds: number) => {
-        if (!seconds || isNaN(seconds)) return "0:00";
-        const mins = Math.floor(seconds / 60);
-        const secs = Math.floor(seconds % 60);
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    // 同步播放状态
+    useEffect(() => {
+        const ws = wavesurferRef.current;
+        if (!ws || !isReady) return;
+
+        if (isPlaying) {
+            ws.play();
+        } else {
+            ws.pause();
+        }
+    }, [isPlaying, isReady]);
+
+    // 同步当前时间（外部控制）
+    useEffect(() => {
+        const ws = wavesurferRef.current;
+        if (!ws || !isReady || isPlaying) return;
+
+        const currentWsTime = ws.getCurrentTime();
+        if (Math.abs(currentWsTime - currentTime) > 0.5) {
+            ws.setTime(currentTime);
+        }
+    }, [currentTime, isReady, isPlaying]);
+
+    const handlePlayClick = () => {
+        onToggle();
     };
-
-    // 拖拽时显示本地进度，否则显示实际进度
-    const displayProgress = isDragging ? localProgress : progress;
 
     return (
         <div className={`
             rounded-xl border bg-white/90 backdrop-blur-sm 
             transition-all duration-300 ease-out overflow-hidden
             ${isPlaying 
-                ? 'border-cyan-400 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-100 py-4' 
-                : 'border-slate-200 hover:border-cyan-300 hover:shadow-md py-2.5'
+                ? 'border-cyan-400 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-100' 
+                : 'border-slate-200 hover:border-cyan-300 hover:shadow-md'
             }
         `}>
-            <audio ref={audioRef} src={audioUrl(seg.audio_url)} preload="metadata" />
-            
-            <div className={`flex items-center gap-3 px-3 transition-all duration-300 ${isPlaying ? 'gap-4' : ''}`}>
-                {/* 播放按钮 */}
-                <button
-                    onClick={onToggle}
-                    className={`
-                        rounded-full flex items-center justify-center flex-shrink-0 
-                        transition-all duration-300
-                        ${isPlaying 
-                            ? "w-10 h-10 bg-cyan-500 shadow-lg shadow-cyan-500/30 text-white" 
-                            : "w-8 h-8 bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"
-                        }
-                    `}
-                >
-                    {isPlaying ? (
-                        <Pause className={`fill-current ${isPlaying ? 'w-4 h-4' : 'w-3 h-3'}`} />
-                    ) : (
-                        <Play className="w-3 h-3 fill-current ml-0.5" />
-                    )}
-                </button>
+            <div className={`transition-all duration-300 ${isPlaying ? 'py-4' : 'py-2.5'}`}>
+                <div className={`flex items-center gap-3 px-3 transition-all duration-300 ${isPlaying ? 'gap-4' : ''}`}>
+                    {/* 播放按钮 */}
+                    <button
+                        onClick={handlePlayClick}
+                        className={`
+                            rounded-full flex items-center justify-center flex-shrink-0 
+                            transition-all duration-300
+                            ${isPlaying 
+                                ? "w-10 h-10 bg-cyan-500 shadow-lg shadow-cyan-500/30 text-white" 
+                                : "w-8 h-8 bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"
+                            }
+                        `}
+                    >
+                        {isPlaying ? (
+                            <Pause className="w-4 h-4 fill-current" />
+                        ) : (
+                            <Play className="w-3 h-3 fill-current ml-0.5" />
+                        )}
+                    </button>
 
-                {/* 内容区域 */}
-                <div className="flex-1 min-w-0 space-y-2">
-                    {/* 文本和波形 */}
-                    <div className="flex items-center gap-3">
-                        <p className={`text-slate-600 truncate flex-1 transition-all duration-300 ${isPlaying ? 'text-sm font-medium' : 'text-xs'}`}>
+                    {/* 内容区域 */}
+                    <div className="flex-1 min-w-0 space-y-2">
+                        {/* 文本 */}
+                        <p className={`text-slate-600 truncate transition-all duration-300 ${isPlaying ? 'text-sm font-medium' : 'text-xs'}`}>
                             {seg.text}
                         </p>
-                        {/* 播放时显示波形 */}
-                        {isPlaying && <AudioWaveform isPlaying={isPlaying} />}
-                    </div>
-                    
-                    {/* 进度条和时间 */}
-                    <div className={`flex items-center gap-3 transition-all duration-300 ${isPlaying ? 'opacity-100' : 'opacity-70'}`}>
-                        <div
-                            ref={progressRef}
+                        
+                        {/* 波形图 */}
+                        <div 
+                            ref={waveformRef}
                             className={`
-                                relative flex-1 rounded-full bg-slate-200 cursor-pointer group
-                                transition-all duration-300
-                                ${isPlaying ? 'h-2.5' : 'h-2'}
+                                w-full transition-all duration-300
+                                ${isPlaying ? 'h-10 opacity-100' : 'h-0 opacity-0'}
                             `}
-                            onMouseDown={handleMouseDown}
-                        >
-                            {/* 进度填充 */}
-                            <div
-                                className="absolute left-0 top-0 h-full bg-gradient-to-r from-cyan-500 to-cyan-400 rounded-full will-change-[width]"
-                                style={{ 
-                                    width: `${Math.max(0, Math.min(100, displayProgress))}%`,
-                                    transition: isDragging ? 'none' : 'width 50ms linear'
-                                }}
-                            />
-                            {/* 圆点手柄 */}
-                            <div
-                                className={`
-                                    absolute top-1/2 bg-white border-2 border-cyan-500 rounded-full shadow-md 
-                                    opacity-0 group-hover:opacity-100 pointer-events-none will-change-[left]
-                                    transition-all duration-200
-                                    ${isPlaying ? 'w-4 h-4' : 'w-3 h-3'}
-                                `}
-                                style={{ 
-                                    left: `${Math.max(0, Math.min(100, displayProgress))}%`,
-                                    transform: 'translate(-50%, -50%)',
-                                    transitionProperty: isDragging ? 'none' : 'left, opacity',
-                                    transitionDuration: isDragging ? '0ms' : '50ms, 150ms'
-                                }}
-                            />
+                        />
+                        
+                        {/* 时间显示 */}
+                        <div className={`flex items-center justify-between transition-all duration-300 ${isPlaying ? 'opacity-100' : 'opacity-70'}`}>
+                            <span className={`
+                                text-slate-400 font-mono tabular-nums
+                                transition-all duration-300
+                                ${isPlaying ? 'text-xs' : 'text-[10px]'}
+                            `}>
+                                {formatTime(currentTime)}
+                            </span>
+                            <span className={`
+                                text-slate-400 font-mono tabular-nums
+                                transition-all duration-300
+                                ${isPlaying ? 'text-xs' : 'text-[10px]'}
+                            `}>
+                                {formatTime(wsDuration || duration)}
+                            </span>
                         </div>
-                        <span className={`
-                            text-slate-400 font-mono text-right tabular-nums flex-shrink-0
-                            transition-all duration-300
-                            ${isPlaying ? 'text-xs w-16' : 'text-[10px] w-14'}
-                        `}>
-                            {formatTime(currentTime)} / {formatTime(duration)}
-                        </span>
                     </div>
-                </div>
 
-                {/* 序号和下载 */}
-                <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className={`
-                        font-mono text-center text-slate-400
-                        transition-all duration-300
-                        ${isPlaying ? 'text-xs w-8' : 'text-[10px] w-6'}
-                    `}>
-                        #{index + 1}
-                    </span>
-                    <button
-                        onClick={() => downloadAudio(seg.audio_url, `segment_${String(index + 1).padStart(2, '0')}.wav`)}
-                        className="p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all"
-                        title="下载此段"
-                    >
-                        <Download className={`transition-all duration-300 ${isPlaying ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} />
-                    </button>
+                    {/* 序号和下载 */}
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className={`
+                            font-mono text-center text-slate-400
+                            transition-all duration-300
+                            ${isPlaying ? 'text-xs w-8' : 'text-[10px] w-6'}
+                        `}>
+                            #{index + 1}
+                        </span>
+                        <button
+                            onClick={() => downloadAudio(seg.audio_url, `segment_${String(index + 1).padStart(2, '0')}.wav`)}
+                            className="p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all"
+                            title="下载此段"
+                        >
+                            <Download className={`transition-all duration-300 ${isPlaying ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} />
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -459,11 +422,9 @@ export default function AudioPlayer({
     const [internalPlayingIndex, setInternalPlayingIndex] = useState<number | null>(null);
     const [currentTimes, setCurrentTimes] = useState<Map<number, number>>(new Map());
     const [durations, setDurations] = useState<Map<number, number>>(new Map());
-    const audioRefs = useRef<Map<number, HTMLAudioElement>>(new Map());
-    const animationFrameRef = useRef<number | null>(null);
     
-    // 使用外部或内部的播放索引
     const currentPlayingIndex = externalPlayingIndex !== undefined ? externalPlayingIndex : internalPlayingIndex;
+    
     const setCurrentPlayingIndex = (index: number | null) => {
         if (externalPlayingIndex === undefined) {
             setInternalPlayingIndex(index);
@@ -471,59 +432,27 @@ export default function AudioPlayer({
         onPlayStateChange?.(index, index !== null);
     };
 
-    // 统一更新当前播放时间 - 使用 requestAnimationFrame 实现平滑进度
-    useEffect(() => {
-        const updateProgress = () => {
-            if (currentPlayingIndex !== null) {
-                const audio = audioRefs.current.get(currentPlayingIndex);
-                if (audio) {
-                    setCurrentTimes(prev => new Map(prev).set(currentPlayingIndex, audio.currentTime));
-                }
-            }
-            animationFrameRef.current = requestAnimationFrame(updateProgress);
-        };
-        
-        animationFrameRef.current = requestAnimationFrame(updateProgress);
-        
-        return () => {
-            if (animationFrameRef.current) {
-                cancelAnimationFrame(animationFrameRef.current);
-            }
-        };
-    }, [currentPlayingIndex]);
-
     const handleToggle = (index: number) => {
-        const audio = audioRefs.current.get(index);
-        if (!audio) return;
-
         if (currentPlayingIndex === index) {
-            // 暂停当前播放
-            audio.pause();
             setCurrentPlayingIndex(null);
         } else {
-            // 停止其他正在播放的音频
-            if (currentPlayingIndex !== null) {
-                const otherAudio = audioRefs.current.get(currentPlayingIndex);
-                if (otherAudio) {
-                    otherAudio.pause();
-                    otherAudio.currentTime = 0;
-                }
-            }
-            // 播放选中的音频
             setCurrentPlayingIndex(index);
-            audio.play().catch(err => {
-                console.error('播放失败:', err);
-                setCurrentPlayingIndex(null);
-            });
         }
     };
 
     const handleSeek = (index: number, time: number) => {
-        const audio = audioRefs.current.get(index);
-        if (!audio) return;
-        
-        audio.currentTime = time;
         setCurrentTimes(prev => new Map(prev).set(index, time));
+    };
+
+    const handleFinish = (index: number) => {
+        const nextIndex = index + 1;
+        if (nextIndex < segments.length) {
+            // 自动播放下一段
+            setCurrentPlayingIndex(nextIndex);
+        } else {
+            // 已经是最后一段，停止播放
+            setCurrentPlayingIndex(null);
+        }
     };
 
     const handleBatchDownload = async () => {
@@ -532,57 +461,6 @@ export default function AudioPlayer({
         await downloadAllAudiosAsZip(segments, projectName);
         setIsDownloading(false);
     };
-
-    // 为每个音频设置事件监听
-    useEffect(() => {
-        const cleanupFns: (() => void)[] = [];
-
-        segments.forEach((seg, idx) => {
-            const audio = audioRefs.current.get(idx);
-            if (!audio) return;
-
-            const handleLoadedMetadata = () => {
-                setDurations(prev => new Map(prev).set(idx, audio.duration || 0));
-            };
-
-            const handleTimeUpdate = () => {
-                // 只有非当前播放的音频才通过 timeupdate 更新
-                // 当前播放的音频由 requestAnimationFrame 负责更新，避免冲突
-                if (idx !== currentPlayingIndex) {
-                    setCurrentTimes(prev => new Map(prev).set(idx, audio.currentTime));
-                }
-            };
-
-            const handleAudioEnded = () => {
-                setCurrentTimes(prev => new Map(prev).set(idx, 0));
-                // 自动播放下一段
-                const nextIndex = idx + 1;
-                if (nextIndex < segments.length) {
-                    setTimeout(() => {
-                        handleToggle(nextIndex);
-                    }, 100);
-                } else {
-                    setCurrentPlayingIndex(null);
-                }
-            };
-
-            audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-            audio.addEventListener('durationchange', handleLoadedMetadata);
-            audio.addEventListener('timeupdate', handleTimeUpdate);
-            audio.addEventListener('ended', handleAudioEnded);
-
-            cleanupFns.push(() => {
-                audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-                audio.removeEventListener('durationchange', handleLoadedMetadata);
-                audio.removeEventListener('timeupdate', handleTimeUpdate);
-                audio.removeEventListener('ended', handleAudioEnded);
-            });
-        });
-
-        return () => {
-            cleanupFns.forEach(fn => fn());
-        };
-    }, [segments, currentPlayingIndex]);
 
     if (loading && synthesisProgress && synthesisProgress.total > 0) {
         return (
@@ -642,7 +520,6 @@ export default function AudioPlayer({
                 </button>
             </div>
 
-            {/* Per-segment players */}
             <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scroll">
                 {segments.map((seg, idx) => (
                     <SegmentPlayer 
@@ -654,10 +531,8 @@ export default function AudioPlayer({
                         duration={durations.get(idx) || 0}
                         onToggle={() => handleToggle(idx)}
                         onSeek={(time) => handleSeek(idx, time)}
-                        audioRef={{
-                            get current() { return audioRefs.current.get(idx) || null; },
-                            set current(val: HTMLAudioElement | null) { if (val) audioRefs.current.set(idx, val); }
-                        } as React.MutableRefObject<HTMLAudioElement | null>}
+                        onFinish={() => handleFinish(idx)}
+                        audioRef={{ current: null }}
                     />
                 ))}
             </div>
