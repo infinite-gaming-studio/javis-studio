@@ -469,7 +469,11 @@ export default function AudioPlayer({
             };
 
             const handleTimeUpdate = () => {
-                setCurrentTimes(prev => new Map(prev).set(idx, audio.currentTime));
+                // 只有非当前播放的音频才通过 timeupdate 更新
+                // 当前播放的音频由 requestAnimationFrame 负责更新，避免冲突
+                if (idx !== currentPlayingIndex) {
+                    setCurrentTimes(prev => new Map(prev).set(idx, audio.currentTime));
+                }
             };
 
             const handleAudioEnded = () => {
@@ -501,7 +505,7 @@ export default function AudioPlayer({
         return () => {
             cleanupFns.forEach(fn => fn());
         };
-    }, [segments]);
+    }, [segments, currentPlayingIndex]);
 
     if (loading && synthesisProgress && synthesisProgress.total > 0) {
         return (
