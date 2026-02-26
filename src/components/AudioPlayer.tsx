@@ -240,6 +240,27 @@ async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectNam
     window.URL.revokeObjectURL(downloadUrl);
 }
 
+// 音频波形动画组件
+function AudioWaveform({ isPlaying }: { isPlaying: boolean }) {
+    return (
+        <div className="flex items-end gap-[2px] h-4">
+            {[...Array(8)].map((_, i) => (
+                <div
+                    key={i}
+                    className={`w-[3px] bg-cyan-500/70 rounded-full transition-all duration-75 ${
+                        isPlaying ? 'animate-waveform' : ''
+                    }`}
+                    style={{
+                        height: isPlaying ? undefined : '20%',
+                        animationDelay: `${i * 75}ms`,
+                        animationDuration: '600ms'
+                    }}
+                />
+            ))}
+        </div>
+    );
+}
+
 interface SegmentPlayerProps {
     seg: AudioSegmentResult;
     index: number;
@@ -317,57 +338,109 @@ function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle,
     const displayProgress = isDragging ? localProgress : progress;
 
     return (
-        <div className={`flex items-center gap-3 rounded-xl bg-white/80 border shadow-sm hover:shadow-md hover:border-cyan-300 px-3 py-2.5 transition-all duration-200 ${isPlaying ? 'border-cyan-400 ring-2 ring-cyan-100' : 'border-slate-200'}`}>
+        <div className={`
+            rounded-xl border bg-white/90 backdrop-blur-sm 
+            transition-all duration-300 ease-out overflow-hidden
+            ${isPlaying 
+                ? 'border-cyan-400 shadow-lg shadow-cyan-500/20 ring-1 ring-cyan-100 py-4' 
+                : 'border-slate-200 hover:border-cyan-300 hover:shadow-md py-2.5'
+            }
+        `}>
             <audio ref={audioRef} src={audioUrl(seg.audio_url)} preload="metadata" />
-
-            <button
-                onClick={onToggle}
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 transition-all ${isPlaying ? "bg-cyan-500 shadow-md shadow-cyan-500/30 text-white" : "bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"}`}
-            >
-                {isPlaying ? (
-                    <Pause className="w-3 h-3 fill-current" />
-                ) : (
-                    <Play className="w-3 h-3 fill-current ml-0.5" />
-                )}
-            </button>
-
-            <div className="flex-1 min-w-0 space-y-1.5">
-                <p className="text-xs text-slate-500 truncate">{seg.text}</p>
-                <div className="flex items-center gap-2">
-                    <div
-                        ref={progressRef}
-                        className="relative flex-1 h-2 rounded-full bg-slate-200 cursor-pointer group"
-                        onMouseDown={handleMouseDown}
-                    >
-                        {/* 进度条填充 - 使用 margin-right 来限制宽度，避免 overflow-hidden 裁剪手柄 */}
-                        <div
-                            className="absolute left-0 top-0 h-full bg-cyan-500 rounded-full transition-all"
-                            style={{ 
-                                width: `${displayProgress}%`,
-                                transitionDuration: isDragging ? '0ms' : '100ms'
-                            }}
-                        />
-                        {/* 拖拽手柄 - 使用 transform translateX(-50%) 确保手柄中心对齐进度位置 */}
-                        <div
-                            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white border-2 border-cyan-500 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-10"
-                            style={{ left: `${displayProgress}%` }}
-                        />
-                    </div>
-                    <span className="text-[10px] text-slate-400 font-mono w-14 text-right tabular-nums">
-                        {formatTime(currentTime)} / {formatTime(duration)}
-                    </span>
-                </div>
-            </div>
-
-            <div className="flex items-center gap-1 flex-shrink-0">
-                <span className="text-[10px] text-slate-400 font-mono w-6 text-center">#{index + 1}</span>
+            
+            <div className={`flex items-center gap-3 px-3 transition-all duration-300 ${isPlaying ? 'gap-4' : ''}`}>
+                {/* 播放按钮 */}
                 <button
-                    onClick={() => downloadAudio(seg.audio_url, `segment_${String(index + 1).padStart(2, '0')}.wav`)}
-                    className="p-1.5 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all"
-                    title="下载此段"
+                    onClick={onToggle}
+                    className={`
+                        rounded-full flex items-center justify-center flex-shrink-0 
+                        transition-all duration-300
+                        ${isPlaying 
+                            ? "w-10 h-10 bg-cyan-500 shadow-lg shadow-cyan-500/30 text-white" 
+                            : "w-8 h-8 bg-white border border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-600 shadow-sm"
+                        }
+                    `}
                 >
-                    <Download className="w-3.5 h-3.5" />
+                    {isPlaying ? (
+                        <Pause className={`fill-current ${isPlaying ? 'w-4 h-4' : 'w-3 h-3'}`} />
+                    ) : (
+                        <Play className="w-3 h-3 fill-current ml-0.5" />
+                    )}
                 </button>
+
+                {/* 内容区域 */}
+                <div className="flex-1 min-w-0 space-y-2">
+                    {/* 文本和波形 */}
+                    <div className="flex items-center gap-3">
+                        <p className={`text-slate-600 truncate flex-1 transition-all duration-300 ${isPlaying ? 'text-sm font-medium' : 'text-xs'}`}>
+                            {seg.text}
+                        </p>
+                        {/* 播放时显示波形 */}
+                        {isPlaying && <AudioWaveform isPlaying={isPlaying} />}
+                    </div>
+                    
+                    {/* 进度条和时间 */}
+                    <div className={`flex items-center gap-3 transition-all duration-300 ${isPlaying ? 'opacity-100' : 'opacity-70'}`}>
+                        <div
+                            ref={progressRef}
+                            className={`
+                                relative flex-1 rounded-full bg-slate-200 cursor-pointer group
+                                transition-all duration-300
+                                ${isPlaying ? 'h-2.5' : 'h-2'}
+                            `}
+                            onMouseDown={handleMouseDown}
+                        >
+                            {/* 进度填充 */}
+                            <div
+                                className="absolute left-0 top-0 h-full bg-gradient-to-r from-cyan-500 to-cyan-400 rounded-full will-change-[width]"
+                                style={{ 
+                                    width: `${Math.max(0, Math.min(100, displayProgress))}%`,
+                                    transition: isDragging ? 'none' : 'width 50ms linear'
+                                }}
+                            />
+                            {/* 圆点手柄 */}
+                            <div
+                                className={`
+                                    absolute top-1/2 bg-white border-2 border-cyan-500 rounded-full shadow-md 
+                                    opacity-0 group-hover:opacity-100 pointer-events-none will-change-[left]
+                                    transition-all duration-200
+                                    ${isPlaying ? 'w-4 h-4' : 'w-3 h-3'}
+                                `}
+                                style={{ 
+                                    left: `${Math.max(0, Math.min(100, displayProgress))}%`,
+                                    transform: 'translate(-50%, -50%)',
+                                    transitionProperty: isDragging ? 'none' : 'left, opacity',
+                                    transitionDuration: isDragging ? '0ms' : '50ms, 150ms'
+                                }}
+                            />
+                        </div>
+                        <span className={`
+                            text-slate-400 font-mono text-right tabular-nums flex-shrink-0
+                            transition-all duration-300
+                            ${isPlaying ? 'text-xs w-16' : 'text-[10px] w-14'}
+                        `}>
+                            {formatTime(currentTime)} / {formatTime(duration)}
+                        </span>
+                    </div>
+                </div>
+
+                {/* 序号和下载 */}
+                <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`
+                        font-mono text-center text-slate-400
+                        transition-all duration-300
+                        ${isPlaying ? 'text-xs w-8' : 'text-[10px] w-6'}
+                    `}>
+                        #{index + 1}
+                    </span>
+                    <button
+                        onClick={() => downloadAudio(seg.audio_url, `segment_${String(index + 1).padStart(2, '0')}.wav`)}
+                        className="p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all"
+                        title="下载此段"
+                    >
+                        <Download className={`transition-all duration-300 ${isPlaying ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} />
+                    </button>
+                </div>
             </div>
         </div>
     );
@@ -581,11 +654,10 @@ export default function AudioPlayer({
                         duration={durations.get(idx) || 0}
                         onToggle={() => handleToggle(idx)}
                         onSeek={(time) => handleSeek(idx, time)}
-                        audioRef={{ 
-                            current: audioRefs.current.get(idx) || null,
+                        audioRef={{
                             get current() { return audioRefs.current.get(idx) || null; },
-                            set current(val) { if (val) audioRefs.current.set(idx, val); }
-                        } as React.RefObject<HTMLAudioElement | null>}
+                            set current(val: HTMLAudioElement | null) { if (val) audioRefs.current.set(idx, val); }
+                        } as React.MutableRefObject<HTMLAudioElement | null>}
                     />
                 ))}
             </div>
