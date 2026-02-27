@@ -16,6 +16,10 @@ import {
   AlertCircle,
   Layers,
   Sparkles,
+  Code,
+  ChevronDown,
+  Copy,
+  Check,
 } from "lucide-react";
 
 // 动态导入 PDF.js，避免 SSR 问题
@@ -51,8 +55,21 @@ export default function PDFToImagePage() {
   const [progress, setProgress] = useState({ current: 0, total: 0 });
   const [settings, setSettings] = useState<ConversionSettings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
+  const [showApiDocs, setShowApiDocs] = useState(false);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // 复制代码到剪贴板
+  const copyCode = async (code: string, id: string) => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopiedCode(id);
+      setTimeout(() => setCopiedCode(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+    }
+  };
 
   // 动态加载 PDF.js
   useEffect(() => {
@@ -250,6 +267,127 @@ export default function PDFToImagePage() {
 
       {/* Main Content */}
       <main className="max-w-screen-xl mx-auto px-6 py-6">
+        {/* API Documentation */}
+        <div className="mb-6">
+          <button
+            onClick={() => setShowApiDocs(!showApiDocs)}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-600 bg-white/60 hover:bg-white/80 rounded-xl border border-slate-200 transition-all"
+          >
+            <Code className="w-4 h-4" />
+            API 调用文档
+            <ChevronDown className={`w-4 h-4 transition-transform ${showApiDocs ? "rotate-180" : ""}`} />
+          </button>
+          
+          {showApiDocs && (
+            <div className="mt-4 p-5 bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-lg">
+              <h3 className="text-lg font-semibold text-slate-800 mb-4">API 端点</h3>
+              
+              <div className="space-y-4">
+                {/* Convert Endpoint */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2 py-0.5 text-xs font-bold text-green-700 bg-green-100 rounded">POST</span>
+                    <code className="text-sm text-slate-700">/api/pdf/convert</code>
+                  </div>
+                  <p className="text-sm text-slate-500 mb-3">转换 PDF 为图片，返回 ZIP 压缩包或 Base64 JSON</p>
+                  
+                  <div className="text-xs text-slate-500 mb-2">参数 (form-data):</div>
+                  <div className="bg-slate-800 text-slate-100 p-3 rounded-lg text-sm font-mono overflow-x-auto relative">
+                    <button
+                      onClick={() => copyCode(`curl -X POST "http://localhost:8000/api/pdf/convert" \\
+  -F "file=@document.pdf" \\
+  -F "scale=2" \\
+  -F "format=png" \\
+  -F "quality=0.92" \\
+  -F "return_type=zip" \\
+  --output images.zip`, "curl")}
+                      className="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-white transition-colors"
+                    >
+                      {copiedCode === "curl" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <pre>{`curl -X POST "http://localhost:8000/api/pdf/convert" \\
+  -F "file=@document.pdf" \\
+  -F "scale=2" \\
+  -F "format=png" \\
+  -F "quality=0.92" \\
+  -F "return_type=zip" \\
+  --output images.zip`}</pre>
+                  </div>
+                  
+                  <div className="mt-3 text-xs text-slate-500">
+                    <strong>参数说明:</strong>
+                  </div>
+                  <ul className="mt-1 text-xs text-slate-500 space-y-1">
+                    <li><code className="bg-slate-200 px-1 rounded">file</code> - PDF 文件 (必填)</li>
+                    <li><code className="bg-slate-200 px-1 rounded">scale</code> - 分辨率倍数 0.5-4，默认 2</li>
+                    <li><code className="bg-slate-200 px-1 rounded">format</code> - 输出格式: png/jpeg/webp，默认 png</li>
+                    <li><code className="bg-slate-200 px-1 rounded">quality</code> - 图片质量 0.1-1.0，默认 0.92</li>
+                    <li><code className="bg-slate-200 px-1 rounded">pages</code> - 指定页码，如 "1,3,5-7"，默认全部</li>
+                    <li><code className="bg-slate-200 px-1 rounded">return_type</code> - 返回类型: zip/base64，默认 zip</li>
+                  </ul>
+                </div>
+
+                {/* Info Endpoint */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="px-2 py-0.5 text-xs font-bold text-green-700 bg-green-100 rounded">POST</span>
+                    <code className="text-sm text-slate-700">/api/pdf/info</code>
+                  </div>
+                  <p className="text-sm text-slate-500 mb-3">获取 PDF 文件信息（页数、尺寸、元数据）</p>
+                  
+                  <div className="bg-slate-800 text-slate-100 p-3 rounded-lg text-sm font-mono overflow-x-auto relative">
+                    <button
+                      onClick={() => copyCode(`curl -X POST "http://localhost:8000/api/pdf/info" \\
+  -F "file=@document.pdf"`, "curl-info")}
+                      className="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-white transition-colors"
+                    >
+                      {copiedCode === "curl-info" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <pre>{`curl -X POST "http://localhost:8000/api/pdf/info" \\
+  -F "file=@document.pdf"`}</pre>
+                  </div>
+                </div>
+
+                {/* Python Example */}
+                <div className="p-4 bg-slate-50 rounded-xl">
+                  <div className="text-xs text-slate-500 mb-2 font-semibold">Python 示例:</div>
+                  <div className="bg-slate-800 text-slate-100 p-3 rounded-lg text-sm font-mono overflow-x-auto relative">
+                    <button
+                      onClick={() => copyCode(`import requests
+
+# 转换 PDF
+with open("document.pdf", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/api/pdf/convert",
+        files={"file": f},
+        data={"scale": 2, "format": "png", "return_type": "zip"}
+    )
+
+with open("images.zip", "wb") as f:
+    f.write(response.content)`, "python")}
+                      className="absolute top-2 right-2 p-1.5 text-slate-400 hover:text-white transition-colors"
+                    >
+                      {copiedCode === "python" ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    </button>
+                    <pre>{`import requests
+
+# 转换 PDF
+with open("document.pdf", "rb") as f:
+    response = requests.post(
+        "http://localhost:8000/api/pdf/convert",
+        files={"file": f},
+        data={"scale": 2, "format": "png", "return_type": "zip"}
+    )
+
+with open("images.zip", "wb") as f:
+    f.write(response.content)`}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
         {!file ? (
           /* Upload Area */
           <div
