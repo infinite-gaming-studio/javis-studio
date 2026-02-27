@@ -45,19 +45,20 @@ interface Props {
 }
 
 // 智能分割文本 - 按目标段数和最大字符数分割
-function smartSplitText(text: string, targetSegments: number, maxCharsPerSegment: number = 150): string[] {
+function smartSplitText(text: string, targetSegments: number | null, maxCharsPerSegment: number = 150): string[] {
     if (!text.trim()) return [];
-    
+
     // 先按句子分割
     const sentences = text.match(/[^。？！.!?]+[。？！.!?]*\s*/g) || [text];
-    const totalLength = text.length;
-    
-    // 计算理想每段长度
-    const idealLength = Math.min(Math.ceil(totalLength / targetSegments), maxCharsPerSegment);
-    
+
+    // 如果没有指定目标段数，只按最大字符数分割
+    const idealLength = targetSegments
+        ? Math.min(Math.ceil(text.length / targetSegments), maxCharsPerSegment)
+        : maxCharsPerSegment;
+
     const result: string[] = [];
     let currentSegment = "";
-    
+
     for (const sentence of sentences) {
         // 如果当前句子本身就很长，需要进一步拆分
         if (sentence.length > maxCharsPerSegment) {
@@ -83,37 +84,39 @@ function smartSplitText(text: string, targetSegments: number, maxCharsPerSegment
             currentSegment += sentence;
         }
     }
-    
+
     if (currentSegment) {
         result.push(currentSegment.trim());
     }
-    
-    // 如果段数太少，尝试进一步拆分较长的段落
-    while (result.length < targetSegments && result.some(s => s.length > idealLength)) {
-        const longIndex = result.findIndex(s => s.length > idealLength);
-        if (longIndex === -1) break;
-        
-        const longText = result[longIndex];
-        const mid = Math.ceil(longText.length / 2);
-        // 在标点处分割
-        const splitPoint = longText.slice(0, mid).lastIndexOf('，') + 1 || 
-                          longText.slice(0, mid).lastIndexOf(',') + 1 || 
-                          longText.slice(0, mid).lastIndexOf(' ') + 1 || mid;
-        
-        result.splice(longIndex, 1, 
-            longText.slice(0, splitPoint).trim(), 
-            longText.slice(splitPoint).trim()
-        );
+
+    // 如果指定了目标段数且段数太少，尝试进一步拆分较长的段落
+    if (targetSegments) {
+        while (result.length < targetSegments && result.some(s => s.length > idealLength)) {
+            const longIndex = result.findIndex(s => s.length > idealLength);
+            if (longIndex === -1) break;
+
+            const longText = result[longIndex];
+            const mid = Math.ceil(longText.length / 2);
+            // 在标点处分割
+            const splitPoint = longText.slice(0, mid).lastIndexOf('，') + 1 ||
+                              longText.slice(0, mid).lastIndexOf(',') + 1 ||
+                              longText.slice(0, mid).lastIndexOf(' ') + 1 || mid;
+
+            result.splice(longIndex, 1,
+                longText.slice(0, splitPoint).trim(),
+                longText.slice(splitPoint).trim()
+            );
+        }
     }
-    
+
     return result.filter(s => s.length > 0);
 }
 
 export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false, currentPlayingIndex }: Props) {
-    const [manualCount, setManualCount] = useState<number>(5);
+    const [manualCount, setManualCount] = useState<number>(1);
     const [expandedSegment, setExpandedSegment] = useState<number | null>(null);
     const [showSplitModal, setShowSplitModal] = useState(false);
-    const [splitConfig, setSplitConfig] = useState({ maxChars: 150, targetSegments: 5 });
+    const [splitConfig, setSplitConfig] = useState<{ maxChars: number; targetSegments: number | null }>({ maxChars: 150, targetSegments: null });
     const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -222,6 +225,22 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                                 <Plus className="w-4 h-4" />
                                 创建分段
                             </button>
+                        </div>
+                        {/* 常用段数快捷按钮 */}
+                        <div className="flex items-center gap-2">
+                            {[3, 5, 10, 15].map((num) => (
+                                <button
+                                    key={num}
+                                    onClick={() => setManualCount(num)}
+                                    className={`px-3 py-1 text-xs rounded-lg border transition-all ${
+                                        manualCount === num
+                                            ? 'bg-cyan-50 border-cyan-300 text-cyan-600'
+                                            : 'bg-white border-slate-200 text-slate-500 hover:border-cyan-300 hover:text-cyan-500'
+                                    }`}
+                                >
+                                    {num}段
+                                </button>
+                            ))}
                         </div>
                         <p className="text-xs text-slate-400">手动创建空白分段，自行填入文本内容</p>
                     </div>
@@ -372,18 +391,24 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                                 />
                             </div>
                             <div>
-                                <label className="text-xs text-slate-500 block mb-1">目标段数</label>
+                                <label className="text-xs text-slate-500 block mb-1">目标段数（可选）</label>
                                 <input
                                     type="number"
                                     min={2}
                                     max={50}
-                                    value={splitConfig.targetSegments}
-                                    onChange={(e) => setSplitConfig({ ...splitConfig, targetSegments: parseInt(e.target.value) || 5 })}
-                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100"
+                                    value={splitConfig.targetSegments || ''}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setSplitConfig({ ...splitConfig, targetSegments: val ? parseInt(val) : null });
+                                    }}
+                                    placeholder="不填则按最大字符数自动分割"
+                                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-xl outline-none focus:border-purple-300 focus:ring-2 focus:ring-purple-100 placeholder:text-slate-300"
                                 />
                             </div>
                             <p className="text-xs text-slate-400">
-                                系统会尽量按目标段数均匀分割，同时确保每段不超过最大字符数
+                                {splitConfig.targetSegments
+                                    ? '系统会尽量按目标段数均匀分割，同时确保每段不超过最大字符数'
+                                    : '不填写目标段数时，系统仅按最大字符数进行分割'}
                             </p>
                         </div>
                         <div className="flex gap-2 pt-2">
