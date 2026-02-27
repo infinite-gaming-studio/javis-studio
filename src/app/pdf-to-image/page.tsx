@@ -86,6 +86,30 @@ export default function PDFToImagePage() {
     }
   }, []);
 
+  // 处理粘贴文件
+  const handlePaste = useCallback((e: ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    for (const item of items) {
+      if (item.kind === "file" && item.type === "application/pdf") {
+        const pastedFile = item.getAsFile();
+        if (pastedFile) {
+          handleFile(pastedFile);
+          break;
+        }
+      }
+    }
+  }, []);
+
+  // 监听粘贴事件
+  useEffect(() => {
+    document.addEventListener("paste", handlePaste);
+    return () => {
+      document.removeEventListener("paste", handlePaste);
+    };
+  }, [handlePaste]);
+
   const handleFile = async (selectedFile: File) => {
     if (!pdfjsLib) return;
     
@@ -265,11 +289,12 @@ export default function PDFToImagePage() {
               <h2 className="text-2xl font-bold text-slate-800 mb-2">
                 {!isPdfLibLoaded ? "正在加载组件..." : isDragging ? "释放以上传 PDF" : "拖放 PDF 文件到这里"}
               </h2>
-              <p className="text-slate-500 mb-6">{isPdfLibLoaded ? "或者点击选择文件" : "请稍候"}</p>
+              <p className="text-slate-500 mb-6">{isPdfLibLoaded ? "或点击选择文件 / Ctrl+V 粘贴" : "请稍候"}</p>
               
               <div className="flex items-center gap-2 text-xs text-slate-400">
                 <span className="px-2 py-1 bg-white/60 rounded-md border border-slate-200">支持格式: PDF</span>
                 <span className="px-2 py-1 bg-white/60 rounded-md border border-slate-200">高保真输出</span>
+                <span className="px-2 py-1 bg-white/60 rounded-md border border-slate-200">支持粘贴</span>
               </div>
 
               <input
