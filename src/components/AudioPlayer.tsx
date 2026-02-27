@@ -352,11 +352,28 @@ function SegmentPlayer({ seg, index, isPlaying, currentTime, duration, onToggle,
                     </button>
 
                     {/* 内容区域 */}
-                    <div className="flex-1 min-w-0 space-y-2">
-                        {/* 文本 */}
-                        <p className={`text-slate-600 truncate transition-all duration-300 ${isPlaying ? 'text-sm font-medium' : 'text-xs'}`}>
-                            {seg.text}
-                        </p>
+                    <div className="flex-1 min-w-0 space-y-2 overflow-hidden">
+                        {/* 文本 - 滚动显示，前5字固定 */}
+                        <div className={`transition-all duration-300 ${isPlaying ? 'text-sm font-medium' : 'text-xs'}`}>
+                            {isPlaying && seg.text.length > 8 ? (
+                                <div className="flex items-center overflow-hidden">
+                                    <span className="text-slate-700 flex-shrink-0">{seg.text.slice(0, 5)}</span>
+                                    <div className="overflow-hidden flex-1 relative">
+                                        <div 
+                                            className="whitespace-nowrap animate-marquee inline-flex"
+                                            style={{'--marquee-text': `'${seg.text.slice(5)} ${seg.text.slice(5)} '`} as React.CSSProperties}
+                                        >
+                                            <span className="text-slate-500">{seg.text.slice(5)}</span>
+                                            <span className="text-slate-500 mx-4 opacity-30">|</span>
+                                            <span className="text-slate-500">{seg.text.slice(5)}</span>
+                                            <span className="text-slate-500 mx-4 opacity-30">|</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <p className="text-slate-600 truncate">{seg.text}</p>
+                            )}
+                        </div>
                         
                         {/* 波形图 */}
                         <div 

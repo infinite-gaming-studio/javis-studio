@@ -116,7 +116,7 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
     const [manualCount, setManualCount] = useState<number>(1);
     const [expandedSegment, setExpandedSegment] = useState<number | null>(null);
     const [showSplitModal, setShowSplitModal] = useState(false);
-    const [splitConfig, setSplitConfig] = useState<{ maxChars: number; targetSegments: number | null }>({ maxChars: 150, targetSegments: null });
+    const [splitConfig, setSplitConfig] = useState<{ maxChars: number; targetSegments: number | null }>({ maxChars: 100, targetSegments: null });
     const segmentRefs = useRef<Map<number, HTMLDivElement>>(new Map());
     const containerRef = useRef<HTMLDivElement>(null);
 
@@ -445,8 +445,8 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                             }}
                             className={`group relative rounded-2xl backdrop-blur-md border shadow-sm hover:shadow-lg hover:shadow-cyan-200/20 py-4 px-6 space-y-3 transition-all duration-300 ${
                                 isPlaying 
-                                    ? 'bg-cyan-50/60 border-cyan-300 ring-2 ring-cyan-200 shadow-lg shadow-cyan-200/30' 
-                                    : 'bg-white/40 border-white/60 hover:border-cyan-200'
+                                    ? 'bg-cyan-50/60 border-cyan-300 ring-2 ring-cyan-200 shadow-lg shadow-cyan-200/30 scale-[1.02] z-10' 
+                                    : 'bg-white/40 border-white/60 hover:border-cyan-200 scale-100'
                             } ${isExpanded && !isPlaying ? 'ring-2 ring-cyan-300 shadow-xl shadow-cyan-200/30' : ''}`}
                         >
                             <div className="flex items-center gap-2">

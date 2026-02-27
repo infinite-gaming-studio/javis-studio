@@ -157,3 +157,25 @@ body {
   animation-iteration-count: infinite;
   animation-timing-function: ease-in-out;
 }
+
+/* 文字跑马灯滚动效果 - 前5字固定，后面滚动 */
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee {
+  animation: marquee 8s linear infinite;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+}
+
+.animate-marquee::after {
+  content: attr(data-text);
+  margin-left: 2rem;
+}

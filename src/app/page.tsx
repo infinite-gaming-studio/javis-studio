@@ -21,7 +21,8 @@ import {
   History,
   Trash2,
   Save,
-  Check
+  Check,
+  RotateCcw
 } from "lucide-react";
 
 import ImageUploader from "@/components/ImageUploader";
@@ -58,6 +59,21 @@ interface ProjectHistory {
 const HISTORY_STORAGE_KEY = "javis_studio_history";
 const MAX_HISTORY_ITEMS = 20;
 
+// 暂存相关的 key 和过期时间（24小时）
+const TEMP_STORAGE_KEY = "javis_studio_temp";
+const TEMP_STORAGE_EXPIRY = 24 * 60 * 60 * 1000; // 24小时
+
+interface TempStorageData {
+  projectName: string;
+  topic: string;
+  images: string[];
+  prompt: string;
+  voiceSettings: TVoiceSettings;
+  script: ScriptSegment[];
+  segments: AudioSegmentResult[];
+  timestamp: number;
+}
+
 // 加载历史记录
 function loadHistory(): ProjectHistory[] {
   if (typeof window === "undefined") return [];
@@ -79,6 +95,50 @@ function saveHistory(history: ProjectHistory[]) {
     localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
   } catch {
     console.error("Failed to save history");
+  }
+}
+
+// 保存暂存数据到 sessionStorage
+function saveTempData(data: Omit<TempStorageData, 'timestamp'>) {
+  if (typeof window === "undefined") return;
+  try {
+    const storageData: TempStorageData = {
+      ...data,
+      timestamp: Date.now(),
+    };
+    sessionStorage.setItem(TEMP_STORAGE_KEY, JSON.stringify(storageData));
+  } catch {
+    console.error("Failed to save temp data");
+  }
+}
+
+// 加载暂存数据
+function loadTempData(): TempStorageData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const saved = sessionStorage.getItem(TEMP_STORAGE_KEY);
+    if (saved) {
+      const data: TempStorageData = JSON.parse(saved);
+      // 检查是否过期
+      if (Date.now() - data.timestamp > TEMP_STORAGE_EXPIRY) {
+        sessionStorage.removeItem(TEMP_STORAGE_KEY);
+        return null;
+      }
+      return data;
+    }
+  } catch {
+    console.error("Failed to load temp data");
+  }
+  return null;
+}
+
+// 清除暂存数据
+function clearTempData() {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(TEMP_STORAGE_KEY);
+  } catch {
+    console.error("Failed to clear temp data");
   }
 }
 
@@ -129,9 +189,58 @@ export default function StudioPage() {
   // 保存成功提示状态
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // 加载历史记录
+  // 加载历史记录和暂存数据
   useEffect(() => {
     setHistory(loadHistory());
+    
+    // 加载暂存数据
+    const tempData = loadTempData();
+    if (tempData) {
+      setProjectName(tempData.projectName);
+      setTopic(tempData.topic);
+      setImages(tempData.images);
+      setPrompt(tempData.prompt);
+      setVoiceSettings(tempData.voiceSettings);
+      setScript(tempData.script);
+      setSegments(tempData.segments);
+    }
+  }, []);
+
+  // 自动保存到 sessionStorage（暂存）
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      // 只在有内容时保存
+      if (projectName || topic || prompt || images.length > 0 || script.length > 0) {
+        saveTempData({
+          projectName,
+          topic,
+          images,
+          prompt,
+          voiceSettings,
+          script,
+          segments,
+        });
+      }
+    }, 1000); // 延迟1秒保存，避免频繁写入
+
+    return () => clearTimeout(timeoutId);
+  }, [projectName, topic, images, prompt, voiceSettings, script, segments]);
+
+  // 清空所有内容
+  const handleClearAll = useCallback(() => {
+    if (confirm("确定要清空所有内容吗？此操作不可恢复。")) {
+      setCurrentProjectId(null);
+      setProjectName("");
+      setTopic("");
+      setPrompt("");
+      setImages([]);
+      setScript([]);
+      setSegments([]);
+      setVoiceSettings(DEFAULT_VOICE);
+      setStep("idle");
+      setError("");
+      clearTempData();
+    }
   }, []);
 
   // 保存当前项目到历史记录
@@ -527,10 +636,10 @@ export default function StudioPage() {
               </button>
 
               {/* 历史记录操作按钮 */}
-              <div className="flex gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => setShowHistory(true)}
-                  className="flex-1 py-2 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5"
+                  className="py-2 rounded-lg text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-all flex items-center justify-center gap-1.5"
                 >
                   <History className="w-3.5 h-3.5" />
                   历史记录
@@ -538,7 +647,7 @@ export default function StudioPage() {
                 <button
                   onClick={saveCurrentProject}
                   disabled={!projectName.trim() && script.length === 0}
-                  className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
+                  className={`py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed ${
                     saveSuccess
                       ? 'text-emerald-600 bg-emerald-50'
                       : 'text-cyan-600 bg-cyan-50 hover:bg-cyan-100'
@@ -550,6 +659,14 @@ export default function StudioPage() {
                     <Save className="w-3.5 h-3.5" />
                   )}
                   {saveSuccess ? '已保存' : '保存项目'}
+                </button>
+                <button
+                  onClick={handleClearAll}
+                  disabled={!projectName.trim() && script.length === 0}
+                  className="py-2 rounded-lg text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  清空
                 </button>
               </div>
             </div>
