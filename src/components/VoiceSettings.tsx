@@ -33,6 +33,28 @@ export default function VoiceSettings({ value, onChange }: Props) {
         };
     }, [spkPreview, emoPreview]);
 
+    // 监听外部重置（如清空操作），当 spk_audio_prompt 为空时清除本地状态
+    useEffect(() => {
+        if (!value.spk_audio_prompt) {
+            if (spkPreview) {
+                URL.revokeObjectURL(spkPreview);
+                setSpkPreview(null);
+            }
+            setSpkName("");
+        }
+    }, [value.spk_audio_prompt]);
+
+    // 监听外部重置，当 emo_audio_prompt 为空时清除本地状态
+    useEffect(() => {
+        if (!value.emo_audio_prompt) {
+            if (emoPreview) {
+                URL.revokeObjectURL(emoPreview);
+                setEmoPreview(null);
+            }
+            setEmoName("");
+        }
+    }, [value.emo_audio_prompt]);
+
     const update = (patch: Partial<VoiceSettings>) => onChange({ ...value, ...patch });
 
     const handleSpkUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
