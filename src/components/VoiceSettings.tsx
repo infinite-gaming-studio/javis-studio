@@ -8,11 +8,10 @@ interface Props {
 }
 
 const EMOTION_MODES: { value: EmotionMode; label: string; desc: string }[] = [
-    { value: "none", label: "无情感控制", desc: "纯声音克隆" },
-    { value: "audio", label: "参考音频情感", desc: "上传情感参考音频" },
-    { value: "vector", label: "情感向量", desc: "手动调节8维情感" },
-    { value: "text", label: "文字描述情感", desc: "用文字描述情感风格" },
-    { value: "text_from_script", label: "脚本自动情感", desc: "根据旁白内容自动推断" },
+    { value: "none", label: "无情感控制", desc: "纯声音克隆 (预训练音色)" },
+    { value: "audio", label: "参考音频情感", desc: "上传情感参考音频 (情感复刻)" },
+    { value: "vector", label: "情感向量", desc: "手动调节8维情感 (情感控制)" },
+    { value: "text", label: "文字描述情感", desc: "用文字描述情感风格 (情感控制)" },
 ];
 
 const EMOTION_LABELS = ["开心", "愤怒", "悲伤", "恐惧", "厌恶", "忧郁", "惊讶", "平静"];
@@ -170,12 +169,11 @@ export default function VoiceSettings({ value, onChange }: Props) {
                             <span className="text-cyan-400 font-mono">{value.emo_alpha.toFixed(2)}</span>
                         </div>
                         <input
-                            type="range" min={0} max={2} step={0.05}
+                            type="range" min={0} max={1} step={0.05}
                             value={value.emo_alpha}
                             onChange={(e) => update({ emo_alpha: parseFloat(e.target.value) })}
                             className="w-full accent-cyan-500"
                         />
-                        <p className="text-[10px] text-slate-400">范围 0-2，实际调用时限制为 0-1</p>
                     </div>
                 </div>
             )}
@@ -188,7 +186,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                         <div key={i} className="flex items-center gap-2">
                             <span className="text-xs text-slate-500 w-10 text-right font-medium">{label}</span>
                             <input
-                                type="range" min={0} max={2} step={0.05}
+                                type="range" min={0} max={1} step={0.05}
                                 value={emoVec[i]}
                                 onChange={(e) => {
                                     const next = [...emoVec];
@@ -206,36 +204,26 @@ export default function VoiceSettings({ value, onChange }: Props) {
             )}
 
             {/* Emotion text */}
-            {(value.emotion_mode === "text" || value.emotion_mode === "text_from_script") && (
+            {value.emotion_mode === "text" && (
                 <div className="space-y-1.5">
-                    {value.emotion_mode === "text" && (
-                        <>
-                            <p className="text-xs text-slate-500">情感描述文字</p>
-                            <input
-                                value={value.emo_text ?? ""}
-                                onChange={(e) => update({ emo_text: e.target.value })}
-                                placeholder="e.g. 充满激情与希望"
-                                className="w-full rounded-lg bg-white border border-slate-200 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 outline-none text-sm text-slate-700 px-3 py-2 transition-all shadow-inner"
-                            />
-                        </>
-                    )}
-                    {value.emotion_mode === "text_from_script" && (
-                        <p className="text-xs text-slate-500 text-cyan-600">
-                            将根据旁白内容自动推断情感风格
-                        </p>
-                    )}
+                    <p className="text-xs text-slate-500">情感描述文字</p>
+                    <input
+                        value={value.emo_text ?? ""}
+                        onChange={(e) => update({ emo_text: e.target.value })}
+                        placeholder="e.g. 充满激情与希望"
+                        className="w-full rounded-lg bg-white border border-slate-200 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 outline-none text-sm text-slate-700 px-3 py-2 transition-all shadow-inner"
+                    />
                     <div className="space-y-1">
                         <div className="flex justify-between text-xs text-slate-500">
                             <span>情感强度 (emo_alpha)</span>
                             <span className="text-cyan-400 font-mono">{value.emo_alpha.toFixed(2)}</span>
                         </div>
                         <input
-                            type="range" min={0} max={2} step={0.05}
+                            type="range" min={0} max={1} step={0.05}
                             value={value.emo_alpha}
                             onChange={(e) => update({ emo_alpha: parseFloat(e.target.value) })}
                             className="w-full accent-cyan-500"
                         />
-                        <p className="text-[10px] text-slate-400">范围 0-2，实际调用时限制为 0-1</p>
                     </div>
                 </div>
             )}

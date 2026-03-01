@@ -2,13 +2,13 @@
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type EmotionMode = "none" | "audio" | "vector" | "text" | "text_from_script";
+export type EmotionMode = "none" | "audio" | "vector" | "text";
 
 export interface VoiceSettings {
   spk_audio_prompt: string; // base64 data URI or URL
   emotion_mode: EmotionMode;
   emo_audio_prompt?: string;
-  emo_alpha: number; // 0.0–2.0 (Index-TTS will clamp to 0-1)
+  emo_alpha: number; // 0.0–1.0
   emo_vector?: number[]; // 8 floats
   emo_text?: string;
   use_random: boolean;
