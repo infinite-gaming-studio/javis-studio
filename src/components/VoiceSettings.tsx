@@ -175,6 +175,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                             onChange={(e) => update({ emo_alpha: parseFloat(e.target.value) })}
                             className="w-full accent-cyan-500"
                         />
+                        <p className="text-[10px] text-slate-400">范围 0-2，实际调用时限制为 0-1</p>
                     </div>
                 </div>
             )}
@@ -205,15 +206,24 @@ export default function VoiceSettings({ value, onChange }: Props) {
             )}
 
             {/* Emotion text */}
-            {(value.emotion_mode === "text") && (
+            {(value.emotion_mode === "text" || value.emotion_mode === "text_from_script") && (
                 <div className="space-y-1.5">
-                    <p className="text-xs text-slate-500">情感描述文字</p>
-                    <input
-                        value={value.emo_text ?? ""}
-                        onChange={(e) => update({ emo_text: e.target.value })}
-                        placeholder="e.g. 充满激情与希望"
-                        className="w-full rounded-lg bg-white border border-slate-200 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 outline-none text-sm text-slate-700 px-3 py-2 transition-all shadow-inner"
-                    />
+                    {value.emotion_mode === "text" && (
+                        <>
+                            <p className="text-xs text-slate-500">情感描述文字</p>
+                            <input
+                                value={value.emo_text ?? ""}
+                                onChange={(e) => update({ emo_text: e.target.value })}
+                                placeholder="e.g. 充满激情与希望"
+                                className="w-full rounded-lg bg-white border border-slate-200 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 outline-none text-sm text-slate-700 px-3 py-2 transition-all shadow-inner"
+                            />
+                        </>
+                    )}
+                    {value.emotion_mode === "text_from_script" && (
+                        <p className="text-xs text-slate-500 text-cyan-600">
+                            将根据旁白内容自动推断情感风格
+                        </p>
+                    )}
                     <div className="space-y-1">
                         <div className="flex justify-between text-xs text-slate-500">
                             <span>情感强度 (emo_alpha)</span>
@@ -225,6 +235,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                             onChange={(e) => update({ emo_alpha: parseFloat(e.target.value) })}
                             className="w-full accent-cyan-500"
                         />
+                        <p className="text-[10px] text-slate-400">范围 0-2，实际调用时限制为 0-1</p>
                     </div>
                 </div>
             )}

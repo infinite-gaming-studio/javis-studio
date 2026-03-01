@@ -223,8 +223,17 @@ export async function POST(
 
             // Optional scalar/text emotion fields
             if (vs.emotion_mode !== undefined) formData.append("emotion_mode", vs.emotion_mode);
-            if (vs.emo_alpha !== undefined) formData.append("emo_alpha", String(vs.emo_alpha));
-            if (vs.emo_text !== undefined) formData.append("emo_text", vs.emo_text);
+            // Clamp emo_alpha to 0-1 for Index-TTS compatibility (UI supports 0-2)
+            const clampedEmoAlpha = vs.emo_alpha !== undefined ? Math.max(0, Math.min(1, vs.emo_alpha)) : undefined;
+            if (clampedEmoAlpha !== undefined) formData.append("emo_alpha", String(clampedEmoAlpha));
+            // For text_from_script mode, use the input text as emotion guide if emo_text not provided
+            // (Index-TTS doesn't natively support text_from_script, we achieve it via emo_text)
+            if (vs.emotion_mode === "text_from_script") {
+                formData.append("emo_text", vs.emo_text || text);
+                formData.append("use_emo_text", "true");
+            } else if (vs.emo_text !== undefined) {
+                formData.append("emo_text", vs.emo_text);
+            }
             if (vs.use_random !== undefined) formData.append("use_random", String(vs.use_random));
             if (vs.emo_vector !== undefined) formData.append("emo_vector", JSON.stringify(vs.emo_vector));
 
