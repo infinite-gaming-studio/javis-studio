@@ -97,43 +97,86 @@ function getDataSize(data: unknown): number {
   }
 }
 
+// 限制单张图片大小（base64 字符串超过此长度会被截断）
+const MAX_IMAGE_SIZE = 100 * 1024; // 100KB
+
 // 清理历史记录中的图片数据以节省空间
 function compressHistoryForStorage(history: ProjectHistory[]): ProjectHistory[] {
   return history.map(item => ({
     ...item,
-    // 如果图片太大，只保留前2张的缩略图或清空
-    images: item.images.length > 3 ? item.images.slice(0, 2) : item.images,
+    // 每张图片限制大小，超过则截断
+    images: item.images
+      .slice(0, 2) // 最多保留2张
+      .map(img => img.length > MAX_IMAGE_SIZE ? img.substring(0, MAX_IMAGE_SIZE) : img),
   }));
 }
 
 // 保存历史记录
 function saveHistory(history: ProjectHistory[]) {
   if (typeof window === "undefined") return;
+  
+  const trySave = (data: ProjectHistory[]): boolean => {
+    try {
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(data));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  
   try {
     const dataToSave = history.slice(0, MAX_HISTORY_ITEMS);
     const jsonString = JSON.stringify(dataToSave);
     
-    // 检查数据大小，如果超过 4MB 尝试压缩
+    // 检查数据大小，如果超过 2MB 尝试压缩
     const size = new Blob([jsonString]).size;
-    if (size > 4 * 1024 * 1024) {
+    if (size > 2 * 1024 * 1024) {
       console.warn(`History data too large (${(size / 1024 / 1024).toFixed(2)}MB), compressing...`);
       const compressed = compressHistoryForStorage(dataToSave);
-      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(compressed));
+      if (trySave(compressed)) {
+        console.log('Saved compressed history');
+        return;
+      }
     } else {
-      localStorage.setItem(HISTORY_STORAGE_KEY, jsonString);
+      if (trySave(dataToSave)) return;
     }
+    
+    // 如果保存失败，进入 fallback 流程
+    throw new Error('QuotaExceededError');
   } catch (err) {
-    // 处理 localStorage 配额超限错误
-    if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message?.includes('quota'))) {
-      console.warn('localStorage quota exceeded, trying to remove oldest items...');
+    // 处理 localStorage 配额超限错误 - 多级 fallback 策略
+    if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message?.includes('quota') || err.message?.includes('Save failed'))) {
+      console.warn('localStorage quota exceeded, trying fallback strategies...');
+      
+      // Level 1: 保留最近一半数据
+      const halfHistory = history.slice(0, Math.floor(MAX_HISTORY_ITEMS / 2));
+      const compressedHalf = compressHistoryForStorage(halfHistory);
+      if (trySave(compressedHalf)) {
+        console.log('Successfully saved half history');
+        return;
+      }
+      
+      // Level 2: 只保留最近3条
+      const threeHistory = history.slice(0, 3);
+      const compressedThree = compressHistoryForStorage(threeHistory);
+      if (trySave(compressedThree)) {
+        console.log('Successfully saved 3 most recent items');
+        return;
+      }
+      
+      // Level 3: 只保留最近1条，且移除所有图片
+      const oneHistory = history.slice(0, 1).map(item => ({ ...item, images: [] }));
+      if (trySave(oneHistory)) {
+        console.log('Successfully saved 1 recent item without images');
+        return;
+      }
+      
+      // Level 4: 清空历史记录
+      console.error('All fallback strategies failed, clearing history');
       try {
-        // 尝试只保留最近的一半数据
-        const halfHistory = history.slice(0, Math.floor(MAX_HISTORY_ITEMS / 2));
-        const compressed = compressHistoryForStorage(halfHistory);
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(compressed));
-        console.log('Successfully saved compressed history');
-      } catch (fallbackErr) {
-        console.error('Failed to save even compressed history:', fallbackErr);
+        localStorage.removeItem(HISTORY_STORAGE_KEY);
+      } catch {
+        // 无法清除，静默处理
       }
     } else {
       console.error("Failed to save history:", err);
