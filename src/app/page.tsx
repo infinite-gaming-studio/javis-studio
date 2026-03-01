@@ -142,10 +142,10 @@ function saveHistory(history: ProjectHistory[]) {
     }
     
     // 如果保存失败，进入 fallback 流程
-    throw new Error('QuotaExceededError');
+    throw new Error('Quota exceeded');
   } catch (err) {
     // 处理 localStorage 配额超限错误 - 多级 fallback 策略
-    if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message?.includes('quota') || err.message?.includes('Save failed'))) {
+    if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message?.includes('quota') || err.message?.includes('Quota exceeded'))) {
       console.warn('localStorage quota exceeded, trying fallback strategies...');
       
       // Level 1: 保留最近一半数据
