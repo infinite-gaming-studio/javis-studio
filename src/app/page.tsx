@@ -88,13 +88,56 @@ function loadHistory(): ProjectHistory[] {
   return [];
 }
 
+// 估算数据大小（字节）
+function getDataSize(data: unknown): number {
+  try {
+    return new Blob([JSON.stringify(data)]).size;
+  } catch {
+    return 0;
+  }
+}
+
+// 清理历史记录中的图片数据以节省空间
+function compressHistoryForStorage(history: ProjectHistory[]): ProjectHistory[] {
+  return history.map(item => ({
+    ...item,
+    // 如果图片太大，只保留前2张的缩略图或清空
+    images: item.images.length > 3 ? item.images.slice(0, 2) : item.images,
+  }));
+}
+
 // 保存历史记录
 function saveHistory(history: ProjectHistory[]) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
-  } catch {
-    console.error("Failed to save history");
+    const dataToSave = history.slice(0, MAX_HISTORY_ITEMS);
+    const jsonString = JSON.stringify(dataToSave);
+    
+    // 检查数据大小，如果超过 4MB 尝试压缩
+    const size = new Blob([jsonString]).size;
+    if (size > 4 * 1024 * 1024) {
+      console.warn(`History data too large (${(size / 1024 / 1024).toFixed(2)}MB), compressing...`);
+      const compressed = compressHistoryForStorage(dataToSave);
+      localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(compressed));
+    } else {
+      localStorage.setItem(HISTORY_STORAGE_KEY, jsonString);
+    }
+  } catch (err) {
+    // 处理 localStorage 配额超限错误
+    if (err instanceof Error && (err.name === 'QuotaExceededError' || err.message?.includes('quota'))) {
+      console.warn('localStorage quota exceeded, trying to remove oldest items...');
+      try {
+        // 尝试只保留最近的一半数据
+        const halfHistory = history.slice(0, Math.floor(MAX_HISTORY_ITEMS / 2));
+        const compressed = compressHistoryForStorage(halfHistory);
+        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(compressed));
+        console.log('Successfully saved compressed history');
+      } catch (fallbackErr) {
+        console.error('Failed to save even compressed history:', fallbackErr);
+      }
+    } else {
+      console.error("Failed to save history:", err);
+    }
   }
 }
 

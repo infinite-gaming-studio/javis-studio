@@ -538,7 +538,7 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                             <textarea
                                 value={seg.text}
                                 onChange={(e) => updateText(seg.index, e.target.value)}
-                                rows={isExpanded ? 8 : (isLongText ? 4 : 2)}
+                                rows={isExpanded ? 20 : (isLongText ? 8 : 6)}
                                 className={`w-full bg-white/50 hover:bg-white/80 focus:bg-white border border-transparent focus:border-cyan-200 rounded-xl py-3 px-4 text-sm text-slate-800 outline-none resize-none placeholder-slate-400 transition-all duration-200 shadow-none focus:shadow-sm custom-scroll ${!seg.text ? 'border-dashed border-slate-300 bg-cyan-50/30' : ''} ${isExpanded ? 'text-base leading-relaxed' : ''}`}
                                 placeholder={seg.text ? "输入脚本内容..." : "请输入第 " + (seg.index + 1) + " 段的旁白内容..."}
                             />
