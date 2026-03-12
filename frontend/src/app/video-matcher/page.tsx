@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import JSZip from "jszip";
-import { Download, Film, Image, Loader2, Play, Edit2, Search, Check } from "lucide-react";
+import { Download, Film, Image, Loader2, Play, Edit2, Search, Check, Folder, Save, Trash2, Plus, ChevronDown, FolderOpen } from "lucide-react";
 import { getSettings } from "@/lib/api";
 import GlobalHeader from "@/components/GlobalHeader";
 import SettingsModal from "@/components/SettingsModal";
@@ -14,7 +14,7 @@ type MediaCandidate = {
   media_type: MediaType;
   media_url: string;
   source_url: string;  // Original source page URL for attribution
-  media_id: number;
+  media_id: string;    // Changed to string to support YouTube video IDs
   thumbnail_url: string;
   duration: number;
   width: number;
@@ -27,9 +27,40 @@ type SegmentMatch = {
   media_type: MediaType;
   candidates: MediaCandidate[];
   selectedIndex: number; // which candidate is selected
+  error?: string; // Error message if search failed
+};
+
+type Project = {
+  id: string;
+  name: string;
+  subtitleText: string;
+  results: SegmentMatch[];
+  globalMediaType: MediaType;
+  createdAt: string;
+  updatedAt: string;
+};
+
+const STORAGE_KEY = "video-matcher-projects";
+const AUTO_SAVE_KEY = "video-matcher-autosave";
+
+// Generate a unique ID
+const generateId = () => Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+
+// Sanitize filename for downloads
+const sanitizeFilename = (name: string): string => {
+  return name.replace(/[^a-zA-Z0-9\u4e00-\u9fa5_-]/g, "_").substring(0, 50);
 };
 
 export default function VideoMatcherPage() {
+  // Project state
+  const [projectName, setProjectName] = useState("未命名项目");
+  const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [savedProjects, setSavedProjects] = useState<Project[]>([]);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+
+  // Work state
   const [subtitleText, setSubtitleText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [results, setResults] = useState<SegmentMatch[]>([]);
@@ -43,6 +74,141 @@ export default function VideoMatcherPage() {
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [previewMedia, setPreviewMedia] = useState<{url: string, type: MediaType} | null>(null);
   const [downloadingYoutube, setDownloadingYoutube] = useState<string | null>(null);
+
+  // Load saved projects from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const projects = JSON.parse(stored);
+          setSavedProjects(projects);
+        }
+        
+        // Load autosave data
+        const autosave = localStorage.getItem(AUTO_SAVE_KEY);
+        if (autosave) {
+          const data = JSON.parse(autosave);
+          if (data.projectName) setProjectName(data.projectName);
+          if (data.subtitleText) setSubtitleText(data.subtitleText);
+          if (data.results) setResults(data.results);
+          if (data.globalMediaType) setGlobalMediaType(data.globalMediaType);
+          if (data.currentProjectId) setCurrentProjectId(data.currentProjectId);
+        }
+      } catch (e) {
+        console.error("Failed to load projects from localStorage:", e);
+      }
+    }
+  }, []);
+
+  // Auto-save to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const autosaveData = {
+        projectName,
+        subtitleText,
+        results,
+        globalMediaType,
+        currentProjectId,
+      };
+      localStorage.setItem(AUTO_SAVE_KEY, JSON.stringify(autosaveData));
+    }
+  }, [projectName, subtitleText, results, globalMediaType, currentProjectId]);
+
+  // Save current project
+  const saveProject = useCallback(() => {
+    if (!projectName.trim()) {
+      alert("请输入项目名称");
+      return;
+    }
+
+    setIsSaving(true);
+    
+    const now = new Date().toISOString();
+    const project: Project = {
+      id: currentProjectId || generateId(),
+      name: projectName.trim(),
+      subtitleText,
+      results,
+      globalMediaType,
+      createdAt: currentProjectId ? (savedProjects.find(p => p.id === currentProjectId)?.createdAt || now) : now,
+      updatedAt: now,
+    };
+
+    setSavedProjects(prev => {
+      const existingIndex = prev.findIndex(p => p.id === project.id);
+      let newProjects;
+      if (existingIndex >= 0) {
+        newProjects = [...prev];
+        newProjects[existingIndex] = project;
+      } else {
+        newProjects = [project, ...prev];
+      }
+      
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newProjects));
+      }
+      return newProjects;
+    });
+
+    setCurrentProjectId(project.id);
+    setLastSaved(new Date());
+    
+    setTimeout(() => setIsSaving(false), 500);
+  }, [projectName, subtitleText, results, globalMediaType, currentProjectId, savedProjects]);
+
+  // Load a project
+  const loadProject = useCallback((project: Project) => {
+    setProjectName(project.name);
+    setSubtitleText(project.subtitleText);
+    setResults(project.results);
+    setGlobalMediaType(project.globalMediaType);
+    setCurrentProjectId(project.id);
+    setIsProjectMenuOpen(false);
+    setErrorMsg("");
+  }, []);
+
+  // Create new project
+  const createNewProject = useCallback(() => {
+    setProjectName(`新项目 ${new Date().toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}`);
+    setSubtitleText("");
+    setResults([]);
+    setGlobalMediaType("video");
+    setCurrentProjectId(null);
+    setIsProjectMenuOpen(false);
+    setErrorMsg("");
+  }, []);
+
+  // Delete a project
+  const deleteProject = useCallback((projectId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("确定要删除这个项目吗？此操作无法撤销。")) return;
+    
+    setSavedProjects(prev => {
+      const newProjects = prev.filter(p => p.id !== projectId);
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newProjects));
+      }
+      return newProjects;
+    });
+
+    // If deleting current project, reset
+    if (currentProjectId === projectId) {
+      setCurrentProjectId(null);
+    }
+  }, [currentProjectId]);
+
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "s") {
+        e.preventDefault();
+        saveProject();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [saveProject]);
 
   const handleMatch = async () => {
     if (!subtitleText.trim()) return;
@@ -198,9 +364,16 @@ export default function VideoMatcherPage() {
   const handleDownloadAll = async () => {
     if (results.length === 0) return;
     setIsDownloadingAll(true);
+    
+    // Track failed downloads for reporting
+    const failedDownloads: Array<{ index: number; keyword: string; source: string; reason: string }> = [];
+    const youtubeVideos: Array<{ index: number; keyword: string; videoId: string; sourceUrl: string }> = [];
+    
     try {
       const zip = new JSZip();
-      let readmeText = "# 配图说明文档\n\n";
+      let readmeText = `# ${projectName}\n\n`;
+      readmeText += `导出时间: ${new Date().toLocaleString("zh-CN")}\n\n`;
+      readmeText += "## 配图说明文档\n\n";
 
       for (let i = 0; i < results.length; i++) {
         const seg = results[i];
@@ -211,7 +384,7 @@ export default function VideoMatcherPage() {
         const ext = isVideo ? "mp4" : "jpg";
         const filename = `${String(i + 1).padStart(2, '0')}_${seg.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.${ext}`;
         
-        readmeText += `## 镜头 ${i + 1}\n`;
+        readmeText += `### 镜头 ${i + 1}\n`;
         readmeText += `- **解说文案**: ${seg.segment}\n`;
         readmeText += `- **搜索关键词**: ${seg.keyword}\n`;
         readmeText += `- **素材类型**: ${isVideo ? "视频" : "图片"}\n`;
@@ -219,9 +392,73 @@ export default function VideoMatcherPage() {
         readmeText += `- **文件**: ${filename}\n`;
         readmeText += `- **原素材链接**: ${selected.source_url || selected.media_url}\n\n`;
 
-        const mediaRes = await fetch(selected.media_url);
-        const mediaBlob = await mediaRes.blob();
-        zip.file(filename, mediaBlob);
+        // YouTube videos cannot be directly downloaded via fetch (CORS + embed URL)
+        if (selected.source === "youtube") {
+          youtubeVideos.push({
+            index: i + 1,
+            keyword: seg.keyword,
+            videoId: selected.media_id,
+            sourceUrl: selected.source_url || `https://www.youtube.com/watch?v=${selected.media_id}`,
+          });
+          continue;
+        }
+
+        // Try to download Pexels/Pixabay media
+        try {
+          const mediaRes = await fetch(selected.media_url, {
+            // Add mode cors for cross-origin requests
+            mode: "cors",
+          });
+          
+          if (!mediaRes.ok) {
+            throw new Error(`HTTP ${mediaRes.status}: ${mediaRes.statusText}`);
+          }
+          
+          const mediaBlob = await mediaRes.blob();
+          
+          // Validate blob is not empty
+          if (mediaBlob.size === 0) {
+            throw new Error("下载的文件为空");
+          }
+          
+          zip.file(filename, mediaBlob);
+        } catch (downloadError: any) {
+          console.error(`Failed to download media for segment ${i + 1}:`, downloadError);
+          failedDownloads.push({
+            index: i + 1,
+            keyword: seg.keyword,
+            source: selected.source,
+            reason: downloadError.message || "网络请求失败",
+          });
+        }
+      }
+
+      // Add YouTube section to README if there are YouTube videos
+      if (youtubeVideos.length > 0) {
+        readmeText += "---\n\n";
+        readmeText += "## ⚠️ YouTube 视频下载说明\n\n";
+        readmeText += "以下视频来自 YouTube，由于版权和跨域限制，无法自动打包下载。\n";
+        readmeText += "请使用 yt-dlp 或其他工具手动下载：\n\n";
+        readmeText += "```bash\n";
+        readmeText += "# 安装 yt-dlp\n";
+        readmeText += "pip install yt-dlp\n\n";
+        for (const yt of youtubeVideos) {
+          readmeText += `# 镜头 ${yt.index} - ${yt.keyword}\n`;
+          readmeText += `yt-dlp "${yt.sourceUrl}" -o "${String(yt.index).padStart(2, '0')}_${yt.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.mp4"\n\n`;
+        }
+        readmeText += "```\n\n";
+        readmeText += "或者在页面上点击每个 YouTube 视频的「下载视频」按钮单独下载。\n\n";
+      }
+
+      // Add failed downloads section to README
+      if (failedDownloads.length > 0) {
+        readmeText += "---\n\n";
+        readmeText += "## ❌ 下载失败的素材\n\n";
+        readmeText += "以下素材下载失败，请手动下载：\n\n";
+        for (const failed of failedDownloads) {
+          readmeText += `- **镜头 ${failed.index}** (${failed.source} - ${failed.keyword}): ${failed.reason}\n`;
+        }
+        readmeText += "\n";
       }
 
       zip.file("README.md", readmeText);
@@ -230,11 +467,25 @@ export default function VideoMatcherPage() {
       const url = URL.createObjectURL(content);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "media_matches.zip";
+      // Use project name for the zip file
+      const sanitizedName = sanitizeFilename(projectName) || "media_matches";
+      a.download = `${sanitizedName}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+
+      // Show summary alert if there were issues
+      if (youtubeVideos.length > 0 || failedDownloads.length > 0) {
+        const messages: string[] = [];
+        if (youtubeVideos.length > 0) {
+          messages.push(`${youtubeVideos.length} 个 YouTube 视频需单独下载`);
+        }
+        if (failedDownloads.length > 0) {
+          messages.push(`${failedDownloads.length} 个素材下载失败`);
+        }
+        alert(`打包完成！\n\n${messages.join("，")}。\n详情请查看 README.md`);
+      }
     } catch (error) {
       alert("打包下载失败，请检查网络或重试");
       console.error(error);
@@ -316,16 +567,125 @@ export default function VideoMatcherPage() {
       <main className="h-[calc(100vh-4rem)] flex flex-col">
         <div className="flex-1 flex flex-col px-6 py-4 max-w-screen-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden">
         
-        {/* Header Section */}
-        <div className="flex flex-col gap-2 shrink-0 mb-4">
+        {/* Header Section with Project Management */}
+        <div className="flex flex-col gap-3 shrink-0 mb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+                <Film className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-800">AI 视频配图</h1>
+                <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay / YouTube / Unsplash 匹配对应素材。</p>
+              </div>
+            </div>
+            
+            {/* Project Management Controls */}
+            <div className="flex items-center gap-2">
+              {/* Project Dropdown */}
+              <div className="relative">
+                <button
+                  onClick={() => setIsProjectMenuOpen(!isProjectMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 hover:border-cyan-300 rounded-lg text-sm font-medium text-slate-700 hover:text-cyan-600 transition-all shadow-sm"
+                >
+                  <FolderOpen className="w-4 h-4" />
+                  项目
+                  <ChevronDown className={`w-4 h-4 transition-transform ${isProjectMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+                
+                {isProjectMenuOpen && (
+                  <>
+                    <div 
+                      className="fixed inset-0 z-40" 
+                      onClick={() => setIsProjectMenuOpen(false)}
+                    />
+                    <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl border border-slate-200 shadow-xl z-50 overflow-hidden">
+                      <div className="p-2 border-b border-slate-100 bg-slate-50">
+                        <button
+                          onClick={createNewProject}
+                          className="flex items-center gap-2 w-full px-3 py-2 text-sm font-medium text-cyan-600 hover:bg-cyan-50 rounded-lg transition-colors"
+                        >
+                          <Plus className="w-4 h-4" />
+                          新建项目
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto py-1">
+                        {savedProjects.length === 0 ? (
+                          <div className="px-4 py-3 text-sm text-slate-400 text-center">
+                            暂无保存的项目
+                          </div>
+                        ) : (
+                          savedProjects.map(project => (
+                            <div
+                              key={project.id}
+                              onClick={() => loadProject(project)}
+                              className={`flex items-center justify-between px-3 py-2 mx-1 rounded-lg cursor-pointer transition-colors ${
+                                currentProjectId === project.id 
+                                  ? "bg-cyan-50 text-cyan-700" 
+                                  : "hover:bg-slate-50 text-slate-700"
+                              }`}
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-medium truncate">{project.name}</div>
+                                <div className="text-xs text-slate-400">
+                                  {new Date(project.updatedAt).toLocaleString("zh-CN", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                                </div>
+                              </div>
+                              <button
+                                onClick={(e) => deleteProject(project.id, e)}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors opacity-0 group-hover:opacity-100"
+                                title="删除项目"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+              
+              {/* Save Button */}
+              <button
+                onClick={saveProject}
+                disabled={isSaving}
+                className="flex items-center gap-2 px-3 py-2 bg-cyan-500 hover:bg-cyan-600 text-white rounded-lg text-sm font-medium transition-all shadow-sm shadow-cyan-500/20 disabled:opacity-50"
+                title="保存项目 (Ctrl+S)"
+              >
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                保存
+              </button>
+            </div>
+          </div>
+          
+          {/* Project Name Input */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-              <Film className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 rounded-lg border border-slate-200/60">
+              <Folder className="w-4 h-4 text-cyan-500" />
+              <input
+                type="text"
+                value={projectName}
+                onChange={(e) => setProjectName(e.target.value)}
+                placeholder="输入项目名称..."
+                className="bg-transparent text-sm font-medium text-slate-700 placeholder-slate-400 focus:outline-none w-48"
+              />
+              {lastSaved && (
+                <span className="text-xs text-slate-400 border-l border-slate-200 pl-2">
+                  已保存 {lastSaved.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}
+                </span>
+              )}
             </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-800">AI 视频配图</h1>
-              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay / YouTube / Unsplash 匹配对应素材。</p>
-            </div>
+            {currentProjectId && (
+              <span className="text-xs text-cyan-600 bg-cyan-50 px-2 py-1 rounded-full">
+                已保存的项目
+              </span>
+            )}
           </div>
         </div>
 
@@ -563,7 +923,15 @@ export default function VideoMatcherPage() {
                           &ldquo;{result.segment}&rdquo;
                         </p>
 
-                        {/* Candidates Row */}
+                        {/* Candidates Row or Error */}
+                        {result.error ? (
+                          <div className="flex items-center gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-700 text-sm">
+                            <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            <span>{result.error}</span>
+                          </div>
+                        ) : (
                         <div className="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
                           {result.candidates.map((cand, cIdx) => {
                             const isSelected = result.selectedIndex === cIdx;
@@ -669,6 +1037,7 @@ export default function VideoMatcherPage() {
                             );
                           })}
                         </div>
+                        )}
                       </div>
                     ))}
                   </div>

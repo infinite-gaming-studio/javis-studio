@@ -229,6 +229,15 @@ async def download_youtube_video(video_id: str):
                 "--no-playlist",
                 "--quiet",
                 "--no-warnings",
+                # Options to bypass YouTube bot detection
+                "--user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                "--extractor-args", "youtube:player_client=web",
+                "--extractor-args", "youtube:player_skip=webpage,configs,js",
+                "--no-check-certificates",
+                # Additional options to handle common errors
+                "--retries", "3",
+                "--fragment-retries", "3",
+                "--skip-unavailable-fragments",
                 youtube_url
             ]
 
@@ -243,12 +252,51 @@ async def download_youtube_video(video_id: str):
 
             if process.returncode != 0:
                 logger.error(f"yt-dlp failed: {process.stderr}")
-                raise HTTPException(status_code=500, detail=f"Failed to download video: {process.stderr}")
+                error_msg = process.stderr or "Unknown error"
+                
+                # Provide user-friendly messages for common errors
+                if "Sign in to confirm" in error_msg or "not a bot" in error_msg:
+                    raise HTTPException(
+                        status_code=500, 
+                        detail="YouTube 检测到异常访问。请尝试以下方法：\n1. 在浏览器中登录 YouTube 账号后重试\n2. 或者使用 Pexels/Pixabay 的免费素材"
+                    )
+                elif "Video unavailable" in error_msg or "removed" in error_msg:
+                    raise HTTPException(
+                        status_code=404,
+                        detail="该视频已被删除或无法访问"
+                    )
+                elif "Private video" in error_msg or "private" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=403,
+                        detail="该视频是私有的，无法下载"
+                    )
+                elif "copyright" in error_msg.lower() or "restricted" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=403,
+                        detail="该视频受版权保护，无法下载"
+                    )
+                elif "confirm your age" in error_msg.lower() or "age-restricted" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=403,
+                        detail="该视频有年龄限制，无法下载"
+                    )
+                elif "network" in error_msg.lower() or "connection" in error_msg.lower():
+                    raise HTTPException(
+                        status_code=503,
+                        detail="网络连接问题，请稍后重试"
+                    )
+                else:
+                    raise HTTPException(status_code=500, detail=f"下载失败: {error_msg[:200]}")
 
             # Find the downloaded file
             downloaded_files = list(temp_path.glob("*.mp4"))
             if not downloaded_files:
-                raise HTTPException(status_code=500, detail="Download completed but file not found")
+                # Check for other video formats
+                downloaded_files = list(temp_path.glob("*.*"))
+                video_files = [f for f in downloaded_files if f.suffix.lower() in ['.mp4', '.webm', '.mkv', '.mov']]
+                if not video_files:
+                    raise HTTPException(status_code=500, detail="Download completed but file not found")
+                downloaded_files = video_files
 
             video_file = downloaded_files[0]
             filename = video_file.name
@@ -270,9 +318,9 @@ async def download_youtube_video(video_id: str):
             )
 
         except subprocess.TimeoutExpired:
-            raise HTTPException(status_code=504, detail="Download timed out (took longer than 5 minutes)")
+            raise HTTPException(status_code=504, detail="下载超时（超过5分钟），请稍后重试")
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error downloading YouTube video: {e}")
-            raise HTTPException(status_code=500, detail=f"Download failed: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")

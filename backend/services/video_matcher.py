@@ -37,6 +37,7 @@ class SegmentMatch(BaseModel):
     keyword: str
     media_type: MediaType = "video"  # default to video for backward compat
     candidates: List[MediaCandidate]
+    error: Optional[str] = None  # Error message if search failed
 
 # Keep backward-compat for the single-search endpoint
 class VideoMatchResult(BaseModel):
@@ -506,18 +507,46 @@ async def match_videos(
     media_type: MediaType = "video",
 ) -> List[SegmentMatch]:
     # 1. Extract keywords via LLM
+    logger.info(f"Starting match_videos with media_type={media_type}, keys: pexels={'SET' if pexels_key else 'NO'}, pixabay={'SET' if pixabay_key else 'NO'}, youtube={'SET' if youtube_key else 'NO'}, unsplash={'SET' if unsplash_key else 'NO'}")
+    
     segments_data = await extract_keywords(text, llm_url, llm_token, llm_model)
+    logger.info(f"LLM extracted {len(segments_data)} segments")
+    
+    if not segments_data:
+        logger.warning("No segments extracted from text")
+        return []
 
     # 2. Search all sources concurrently for each segment
-    async def process_segment(item: Dict[str, str]) -> Optional[SegmentMatch]:
+    async def process_segment(item: Dict[str, str]) -> SegmentMatch:
         segment = item.get("segment", "")
         keyword = item.get("keyword", "")
+        logger.info(f"Processing segment: '{segment[:30]}...' with keyword: '{keyword}'")
+        
         if not segment or not keyword:
-            return None
+            error_msg = "无法提取关键词" if not keyword else "片段内容为空"
+            logger.warning(f"Segment processing failed: {error_msg}")
+            return SegmentMatch(
+                segment=segment or "(empty)",
+                keyword=keyword or "(none)",
+                media_type=media_type,
+                candidates=[],
+                error=error_msg
+            )
 
         candidates = await search_all_sources(keyword, pexels_key, pixabay_key, youtube_key, unsplash_key, media_type)
+        logger.info(f"Search for keyword '{keyword}' returned {len(candidates)} candidates")
+        
         if not candidates:
-            return None
+            # Return segment with error instead of discarding it
+            error_msg = f"未找到匹配的{('视频' if media_type == 'video' else '图片')}素材，请尝试修改关键词"
+            logger.warning(f"No candidates found for keyword '{keyword}' - returning error segment")
+            return SegmentMatch(
+                segment=segment,
+                keyword=keyword,
+                media_type=media_type,
+                candidates=[],
+                error=error_msg
+            )
 
         return SegmentMatch(
             segment=segment,
@@ -529,4 +558,6 @@ async def match_videos(
     tasks = [process_segment(item) for item in segments_data]
     matched_results = await asyncio.gather(*tasks)
 
-    return [res for res in matched_results if res is not None]
+    logger.info(f"Total segments returned: {len(matched_results)} out of {len(segments_data)} segments")
+    
+    return matched_results
