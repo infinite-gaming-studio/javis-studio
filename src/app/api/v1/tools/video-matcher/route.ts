@@ -23,6 +23,9 @@ export async function POST(req: Request) {
         
         const pixabayKey = req.headers.get("x-pixabay-key");
         if (pixabayKey) headers["x-pixabay-key"] = pixabayKey;
+        
+        const youtubeKey = req.headers.get("x-youtube-key");
+        if (youtubeKey) headers["x-youtube-key"] = youtubeKey;
 
         // Default FastAPI local url is 8000
         const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";

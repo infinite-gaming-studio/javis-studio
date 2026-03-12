@@ -51,18 +51,19 @@ export interface GlobalSettings {
   ttsToken: string;
   pexelsApiKey: string;
   pixabayApiKey: string;
+  youtubeApiKey: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getSettings(): GlobalSettings {
-  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "" };
+  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "" };
   const saved = localStorage.getItem("javis_studio_settings");
-  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "" };
+  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "" };
   try {
     return JSON.parse(saved);
   } catch {
-    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "" };
+    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "" };
   }
 }
 
@@ -81,6 +82,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
       "x-tts-token": settings.ttsToken,
       "x-pexels-key": settings.pexelsApiKey || "",
       "x-pixabay-key": settings.pixabayApiKey || "",
+      "x-youtube-key": settings.youtubeApiKey || "",
     },
     body: JSON.stringify(body),
   });

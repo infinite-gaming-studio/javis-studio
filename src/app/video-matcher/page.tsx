@@ -2,15 +2,18 @@
 
 import { useState } from "react";
 import JSZip from "jszip";
-import { Download, Film, Loader2, Play, Edit2, Search, Check } from "lucide-react";
+import { Download, Film, Image, Loader2, Play, Edit2, Search, Check } from "lucide-react";
 import { getSettings } from "@/lib/api";
 import GlobalHeader from "@/components/GlobalHeader";
 import SettingsModal from "@/components/SettingsModal";
 
-type VideoCandidate = {
+type MediaType = "video" | "photo";
+
+type MediaCandidate = {
   source: string;
-  video_url: string;
-  video_id: number;
+  media_type: MediaType;
+  media_url: string;
+  media_id: number;
   thumbnail_url: string;
   duration: number;
   width: number;
@@ -20,7 +23,8 @@ type VideoCandidate = {
 type SegmentMatch = {
   segment: string;
   keyword: string;
-  candidates: VideoCandidate[];
+  media_type: MediaType;
+  candidates: MediaCandidate[];
   selectedIndex: number; // which candidate is selected
 };
 
@@ -30,12 +34,13 @@ export default function VideoMatcherPage() {
   const [results, setResults] = useState<SegmentMatch[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [globalMediaType, setGlobalMediaType] = useState<MediaType>("video");
 
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editKeyword, setEditKeyword] = useState("");
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
-  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
+  const [previewMedia, setPreviewMedia] = useState<{url: string, type: MediaType} | null>(null);
 
   const handleMatch = async () => {
     if (!subtitleText.trim()) return;
@@ -55,9 +60,11 @@ export default function VideoMatcherPage() {
           "x-llm-model": settings.llmModel,
           "x-pexels-key": settings.pexelsApiKey || "",
           "x-pixabay-key": settings.pixabayApiKey || "",
+          "x-youtube-key": settings.youtubeApiKey || "",
         },
         body: JSON.stringify({
           text: subtitleText,
+          media_type: globalMediaType,
         }),
       });
 
@@ -79,22 +86,25 @@ export default function VideoMatcherPage() {
     }
   };
 
-  const handleReplace = async (idx: number) => {
+  const handleReplace = async (idx: number, newMediaType?: MediaType) => {
     if (!editKeyword.trim() || replacingIndex !== null) return;
     
     setReplacingIndex(idx);
     try {
       const settings = getSettings();
+      const targetMediaType = newMediaType || results[idx].media_type;
       const res = await fetch("/api/v1/tools/video-matcher/search", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           "x-pexels-key": settings.pexelsApiKey || "",
           "x-pixabay-key": settings.pixabayApiKey || "",
+          "x-youtube-key": settings.youtubeApiKey || "",
         },
         body: JSON.stringify({
           keyword: editKeyword.trim(),
           segment: results[idx].segment,
+          media_type: targetMediaType,
         }),
       });
 
@@ -109,6 +119,7 @@ export default function VideoMatcherPage() {
         newResults[idx] = {
           segment: data.segment,
           keyword: data.keyword,
+          media_type: data.media_type,
           candidates: data.candidates,
           selectedIndex: 0,
         };
@@ -117,6 +128,55 @@ export default function VideoMatcherPage() {
       setEditingIndex(null);
     } catch (error: any) {
       alert(error.message || "替换失败");
+    } finally {
+      setReplacingIndex(null);
+    }
+  };
+
+  // Toggle media type for a specific segment and re-search
+  const handleToggleMediaType = async (idx: number, targetMediaType: MediaType) => {
+    if (replacingIndex !== null) return;
+    
+    const currentResult = results[idx];
+    if (currentResult.media_type === targetMediaType) return;
+    
+    setReplacingIndex(idx);
+    try {
+      const settings = getSettings();
+      const res = await fetch("/api/v1/tools/video-matcher/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-pexels-key": settings.pexelsApiKey || "",
+          "x-pixabay-key": settings.pixabayApiKey || "",
+          "x-youtube-key": settings.youtubeApiKey || "",
+        },
+        body: JSON.stringify({
+          keyword: currentResult.keyword,
+          segment: currentResult.segment,
+          media_type: targetMediaType,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || `HTTP Error ${res.status}`);
+      }
+
+      const data = await res.json();
+      setResults(prev => {
+        const newResults = [...prev];
+        newResults[idx] = {
+          segment: data.segment,
+          keyword: data.keyword,
+          media_type: data.media_type,
+          candidates: data.candidates,
+          selectedIndex: 0,
+        };
+        return newResults;
+      });
+    } catch (error: any) {
+      alert(error.message || `切换${targetMediaType === "video" ? "视频" : "图片"}失败`);
     } finally {
       setReplacingIndex(null);
     }
@@ -135,25 +195,28 @@ export default function VideoMatcherPage() {
     setIsDownloadingAll(true);
     try {
       const zip = new JSZip();
-      let readmeText = "# 视频配图说明文档\n\n";
+      let readmeText = "# 配图说明文档\n\n";
 
       for (let i = 0; i < results.length; i++) {
         const seg = results[i];
         const selected = seg.candidates[seg.selectedIndex];
         if (!selected) continue;
         
-        const filename = `${String(i + 1).padStart(2, '0')}_${seg.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
+        const isVideo = selected.media_type === "video";
+        const ext = isVideo ? "mp4" : "jpg";
+        const filename = `${String(i + 1).padStart(2, '0')}_${seg.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.${ext}`;
         
         readmeText += `## 镜头 ${i + 1}\n`;
         readmeText += `- **解说文案**: ${seg.segment}\n`;
         readmeText += `- **搜索关键词**: ${seg.keyword}\n`;
+        readmeText += `- **素材类型**: ${isVideo ? "视频" : "图片"}\n`;
         readmeText += `- **素材来源**: ${selected.source}\n`;
-        readmeText += `- **视频文件**: ${filename}\n`;
-        readmeText += `- **原始链接**: ${selected.video_url}\n\n`;
+        readmeText += `- **文件**: ${filename}\n`;
+        readmeText += `- **原始链接**: ${selected.media_url}\n\n`;
 
-        const videoRes = await fetch(selected.video_url);
-        const videoBlob = await videoRes.blob();
-        zip.file(filename, videoBlob);
+        const mediaRes = await fetch(selected.media_url);
+        const mediaBlob = await mediaRes.blob();
+        zip.file(filename, mediaBlob);
       }
 
       zip.file("README.md", readmeText);
@@ -162,7 +225,7 @@ export default function VideoMatcherPage() {
       const url = URL.createObjectURL(content);
       const a = document.createElement("a");
       a.href = url;
-      a.download = "video_matches.zip";
+      a.download = "media_matches.zip";
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -192,6 +255,7 @@ export default function VideoMatcherPage() {
   const sourceBadgeColor = (source: string) => {
     if (source === "pexels") return "bg-emerald-50 text-emerald-600 border-emerald-100";
     if (source === "pixabay") return "bg-amber-50 text-amber-600 border-amber-100";
+    if (source === "youtube") return "bg-red-50 text-red-600 border-red-100";
     return "bg-slate-50 text-slate-600 border-slate-100";
   };
 
@@ -204,28 +268,59 @@ export default function VideoMatcherPage() {
         onSettingsClick={() => setIsSettingsOpen(true)}
       />
 
-      <main className="max-w-screen-xl mx-auto px-6 py-6">
-        <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <main className="h-[calc(100vh-4rem)] flex flex-col">
+        <div className="flex-1 flex flex-col px-6 py-4 max-w-screen-2xl mx-auto w-full animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden">
         
         {/* Header Section */}
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 shrink-0 mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
               <Film className="w-5 h-5 text-white" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-800">AI 视频配图</h1>
-              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay 匹配对应素材。</p>
+              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay / YouTube 匹配对应素材。</p>
             </div>
           </div>
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
           
-          {/* Input Panel */}
-          <div className="lg:col-span-1 space-y-4 flex flex-col">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 border border-white/60 shadow-xl shadow-cyan-200/40 flex flex-col h-[calc(100vh-14rem)]">
+          {/* Input Panel - Fixed height, not stretching */}
+          <div className="lg:col-span-1 flex flex-col min-h-0 h-full">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 border border-white/60 shadow-xl shadow-cyan-200/40 flex flex-col h-full overflow-hidden">
+              {/* Media Type Selector - Moved to top */}
+              <div className="mb-4">
+                <label className="text-xs font-medium text-slate-500 mb-2 block">素材类型</label>
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
+                  <button
+                    onClick={() => setGlobalMediaType("video")}
+                    disabled={isProcessing}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                      globalMediaType === "video"
+                        ? "bg-white text-cyan-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    } disabled:opacity-50`}
+                  >
+                    <Film className="w-4 h-4" />
+                    视频
+                  </button>
+                  <button
+                    onClick={() => setGlobalMediaType("photo")}
+                    disabled={isProcessing}
+                    className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-md transition-all ${
+                      globalMediaType === "photo"
+                        ? "bg-white text-cyan-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    } disabled:opacity-50`}
+                  >
+                    <Image className="w-4 h-4" />
+                    图片
+                  </button>
+                </div>
+              </div>
+
               <h2 className="text-[15px] font-semibold text-slate-800 mb-3 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
                 输入字幕原稿
@@ -237,9 +332,10 @@ export default function VideoMatcherPage() {
 
 例如：
 今天我们来学习如何制作美味的红烧肉。首先，准备五花肉切块，然后焯水备用。热锅凉油，放入冰糖炒出糖色..."
-                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none"
+                className="flex-1 w-full bg-slate-50 border border-slate-200 rounded-xl p-4 text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all resize-none min-h-[120px]"
               />
-              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+
+              <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between shrink-0">
                 <span className="text-xs font-medium text-slate-400">
                   {subtitleText.length} 字
                 </span>
@@ -255,7 +351,7 @@ export default function VideoMatcherPage() {
                     </>
                   ) : (
                     <>
-                      <Film className="w-4 h-4" />
+                      {globalMediaType === "video" ? <Film className="w-4 h-4" /> : <Image className="w-4 h-4" />}
                       开始匹配
                     </>
                   )}
@@ -265,12 +361,13 @@ export default function VideoMatcherPage() {
           </div>
 
           {/* Results Panel */}
-          <div className="lg:col-span-2 flex flex-col">
-            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 border border-white/60 shadow-xl shadow-cyan-200/40 min-h-[calc(100vh-14rem)] flex flex-col">
-              <div className="flex items-center justify-between mb-4">
+          <div className="lg:col-span-2 flex flex-col min-h-0 h-full">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white/60 shadow-xl shadow-cyan-200/40 flex flex-col h-full">
+              {/* Header - Fixed at top */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
                 <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                  匹配结果 
+                  匹配结果
                   {results.length > 0 && (
                     <span className="bg-cyan-50 text-cyan-600 text-[11px] px-2 py-0.5 rounded-full ml-1">
                       {results.length} 个镜头
@@ -295,13 +392,13 @@ export default function VideoMatcherPage() {
 
               {/* Error Message */}
               {errorMsg && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl">
+                <div className="mx-5 mt-4 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl shrink-0">
                   {errorMsg}
                 </div>
               )}
 
-              {/* Results List */}
-              <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
+              {/* Results List - Scrollable */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar min-h-0">
                 {results.length === 0 && !isProcessing && !errorMsg ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-400 gap-3">
                     <div className="w-16 h-16 rounded-full bg-slate-50 flex items-center justify-center border border-slate-100">
@@ -327,10 +424,49 @@ export default function VideoMatcherPage() {
                       <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-cyan-200 hover:shadow-md transition-all">
                         
                         {/* Segment Header */}
-                        <div className="flex items-center gap-2 mb-3">
+                        <div className="flex items-center gap-2 mb-3 flex-wrap">
                           <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                             #{idx + 1}
                           </span>
+                          
+                          {/* Media Type Toggle for this segment */}
+                          <div className="flex items-center rounded-md overflow-hidden border border-slate-200 bg-slate-50">
+                            <button
+                              onClick={() => result.media_type !== "video" && handleToggleMediaType(idx, "video")}
+                              disabled={replacingIndex === idx}
+                              className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-all ${
+                                result.media_type === "video"
+                                  ? "bg-purple-50 text-purple-600 border-r border-purple-200"
+                                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100 border-r border-slate-200"
+                              } disabled:opacity-50`}
+                              title="切换到视频"
+                            >
+                              {replacingIndex === idx && result.media_type !== "video" ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Film className="w-3 h-3" />
+                              )}
+                              视频
+                            </button>
+                            <button
+                              onClick={() => result.media_type !== "photo" && handleToggleMediaType(idx, "photo")}
+                              disabled={replacingIndex === idx}
+                              className={`flex items-center gap-1 px-2 py-0.5 text-[10px] font-medium transition-all ${
+                                result.media_type === "photo"
+                                  ? "bg-amber-50 text-amber-600"
+                                  : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+                              } disabled:opacity-50`}
+                              title="切换到图片"
+                            >
+                              {replacingIndex === idx && result.media_type !== "photo" ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Image className="w-3 h-3" />
+                              )}
+                              图片
+                            </button>
+                          </div>
+
                           {editingIndex === idx ? (
                             <div className="flex items-center gap-1.5 flex-1">
                               <input
@@ -350,7 +486,7 @@ export default function VideoMatcherPage() {
                                 onClick={() => handleReplace(idx)}
                                 disabled={replacingIndex === idx}
                                 className="text-xs bg-cyan-500 text-white px-2 py-1 rounded shadow-sm hover:bg-cyan-600 disabled:opacity-70 transition-colors flex items-center"
-                                title="重新检索视频"
+                                title={`重新检索${result.media_type === "video" ? "视频" : "图片"}`}
                               >
                                 {replacingIndex === idx ? <Loader2 className="w-3 h-3 animate-spin"/> : <Search className="w-3 h-3" />}
                               </button>
@@ -386,6 +522,7 @@ export default function VideoMatcherPage() {
                         <div className="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
                           {result.candidates.map((cand, cIdx) => {
                             const isSelected = result.selectedIndex === cIdx;
+                            const isVideo = cand.media_type === "video";
                             return (
                               <div
                                 key={cIdx}
@@ -405,27 +542,43 @@ export default function VideoMatcherPage() {
                                   />
                                   {/* Hover overlay */}
                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
-                                    <button 
-                                      onClick={(e) => { e.stopPropagation(); setPreviewVideo(cand.video_url); }}
-                                      className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
-                                      title="预览播放"
-                                    >
-                                      <Play className="w-4 h-4 text-white group-hover/btn:text-cyan-600 ml-0.5" />
-                                    </button>
+                                    {isVideo ? (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); setPreviewMedia({url: cand.media_url, type: "video"}); }}
+                                        className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
+                                        title="预览播放"
+                                      >
+                                        <Play className="w-4 h-4 text-white group-hover/btn:text-cyan-600 ml-0.5" />
+                                      </button>
+                                    ) : (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); setPreviewMedia({url: cand.media_url, type: "photo"}); }}
+                                        className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
+                                        title="查看大图"
+                                      >
+                                        <Image className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
+                                      </button>
+                                    )}
                                     <a 
-                                      href={cand.video_url} 
+                                      href={cand.media_url} 
                                       download
                                       target="_blank"
                                       onClick={(e) => e.stopPropagation()}
                                       className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
-                                      title="下载视频"
+                                      title={`下载${isVideo ? "视频" : "图片"}`}
                                     >
                                       <Download className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
                                     </a>
                                   </div>
-                                  {/* Duration badge */}
-                                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-medium text-white">
-                                    {cand.duration}s
+                                  {/* Duration badge (only for video) */}
+                                  {isVideo && cand.duration > 0 && (
+                                    <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-medium text-white">
+                                      {cand.duration}s
+                                    </div>
+                                  )}
+                                  {/* Media type indicator */}
+                                  <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-medium text-white flex items-center gap-1">
+                                    {isVideo ? <Film className="w-3 h-3" /> : <Image className="w-3 h-3" />}
                                   </div>
                                   {/* Selected checkmark */}
                                   {isSelected && (
@@ -454,28 +607,38 @@ export default function VideoMatcherPage() {
         </div>
       </main>
 
-      {/* Video Preview Modal */}
-      {previewVideo && (
+      {/* Media Preview Modal */}
+      {previewMedia && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" 
-          onClick={() => setPreviewVideo(null)}
+          onClick={() => setPreviewMedia(null)}
         >
           <div 
-            className="relative w-full max-w-4xl aspect-[16/9] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/20 flex flex-col items-center justify-center"
+            className={`relative w-full max-w-4xl bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/20 flex flex-col items-center justify-center ${
+              previewMedia.type === "video" ? "aspect-[16/9]" : ""
+            }`}
             onClick={e => e.stopPropagation()}
           >
             <button 
-              onClick={() => setPreviewVideo(null)}
+              onClick={() => setPreviewMedia(null)}
               className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 text-white transition-colors"
             >
               ×
             </button>
-            <video 
-              src={previewVideo} 
-              controls 
-              autoPlay 
-              className="w-full h-full"
-            />
+            {previewMedia.type === "video" ? (
+              <video 
+                src={previewMedia.url} 
+                controls 
+                autoPlay 
+                className="w-full h-full"
+              />
+            ) : (
+              <img 
+                src={previewMedia.url} 
+                alt="Preview" 
+                className="max-w-full max-h-[80vh] object-contain"
+              />
+            )}
           </div>
         </div>
       )}

@@ -11,6 +11,7 @@ export interface SettingsConfig {
     ttsToken: string;
     pexelsApiKey: string;
     pixabayApiKey: string;
+    youtubeApiKey: string;
 }
 
 type TestStatus = "idle" | "testing" | "success" | "error";
@@ -24,6 +25,7 @@ const DEFAULT_CONFIG: SettingsConfig = {
     ttsToken: "",
     pexelsApiKey: "",
     pixabayApiKey: "",
+    youtubeApiKey: "",
 };
 
 interface NvidiaModel {
@@ -53,6 +55,8 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     const [pexelsTestMsg, setPexelsTestMsg] = useState("");
     const [pixabayTestStatus, setPixabayTestStatus] = useState<TestStatus>("idle");
     const [pixabayTestMsg, setPixabayTestMsg] = useState("");
+    const [youtubeTestStatus, setYoutubeTestStatus] = useState<TestStatus>("idle");
+    const [youtubeTestMsg, setYoutubeTestMsg] = useState("");
 
     // Model fetching states
     const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
@@ -325,6 +329,46 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
         } catch (e: unknown) {
             setPixabayTestStatus("error");
             setPixabayTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
+    const testYoutubeConnection = async () => {
+        setYoutubeTestStatus("testing");
+        setYoutubeTestMsg("");
+        try {
+            if (!config.youtubeApiKey) {
+                setYoutubeTestStatus("error");
+                setYoutubeTestMsg("请先填写 API Key");
+                return;
+            }
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: `https://www.googleapis.com/youtube/v3/search?part=snippet&q=test&type=video&maxResults=1&key=${config.youtubeApiKey}`,
+                    method: "GET",
+                    headers: {}
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setYoutubeTestStatus("success");
+                setYoutubeTestMsg("连接成功！");
+            } else {
+                setYoutubeTestStatus("error");
+                const statusInfo = data.status ? `${data.status} ` : "";
+                let errorMsg = data.errorDetail || data.statusText || '未知错误';
+                // Handle specific YouTube API errors
+                if (data.data?.error?.message) {
+                    errorMsg = data.data.error.message;
+                }
+                setYoutubeTestMsg(`连接失败: ${statusInfo}${errorMsg}`);
+            }
+        } catch (e: unknown) {
+            setYoutubeTestStatus("error");
+            setYoutubeTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
         }
     };
 
@@ -670,6 +714,33 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                                     placeholder="用于视频素材匹配 (pixabay.com)"
                                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                                 />
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-xs font-medium text-slate-500">YouTube Data API Key</label>
+                                    <div className="flex items-center gap-2">
+                                        {youtubeTestMsg && (
+                                            <span className={`text-[10px] font-medium ${youtubeTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                {youtubeTestMsg}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={testYoutubeConnection}
+                                            disabled={youtubeTestStatus === "testing"}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                        >
+                                            {youtubeTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <input
+                                    type="password"
+                                    value={config.youtubeApiKey || ""}
+                                    onChange={e => setConfig({ ...config, youtubeApiKey: e.target.value })}
+                                    placeholder="用于视频素材匹配 (仅支持视频，developers.google.com/youtube)"
+                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                />
+                                <p className="text-[10px] text-slate-400 mt-1">YouTube API 仅支持视频搜索，暂不支持图片</p>
                             </div>
                         </div>
                     </div>
