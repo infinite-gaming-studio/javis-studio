@@ -12,6 +12,7 @@ export interface SettingsConfig {
     pexelsApiKey: string;
     pixabayApiKey: string;
     youtubeApiKey: string;
+    youtubeCookiesPath: string;
     unsplashApiKey: string;
 }
 
@@ -27,6 +28,7 @@ const DEFAULT_CONFIG: SettingsConfig = {
     pexelsApiKey: "",
     pixabayApiKey: "",
     youtubeApiKey: "",
+    youtubeCookiesPath: "",
     unsplashApiKey: "",
 };
 
@@ -791,6 +793,30 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                                             className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                                         />
                                         <p className="text-[10px] text-slate-400 mt-1">YouTube API 仅支持视频搜索，暂不支持图片</p>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-medium text-slate-500">YouTube Cookies 路径</label>
+                                            <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">可选</span>
+                                        </div>
+                                        <input
+                                            type="text"
+                                            value={config.youtubeCookiesPath || ""}
+                                            onChange={e => setConfig({ ...config, youtubeCookiesPath: e.target.value })}
+                                            placeholder="/path/to/cookies.txt (解决下载限制)"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1">
+                                            导出浏览器 cookies 可解决 YouTube 下载限制。
+                                            <a 
+                                                href="https://github.com/yt-dlp/yt-dlp/wiki/FAQ#how-do-i-pass-cookies-to-yt-dlp" 
+                                                target="_blank" 
+                                                rel="noopener noreferrer"
+                                                className="text-cyan-600 hover:underline"
+                                            >
+                                                查看教程
+                                            </a>
+                                        </p>
                                     </div>
                                     <div>
                                         <div className="flex items-center justify-between mb-1">

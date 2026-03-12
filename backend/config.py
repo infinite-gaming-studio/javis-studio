@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     pixabay_api_key: str = ""
     youtube_api_key: str = ""
     unsplash_api_key: str = ""
+    
+    # YouTube Download (yt-dlp)
+    youtube_cookies_path: str = ""  # Path to cookies.txt for YouTube authentication
 
     # Storage
     storage_dir: str = "./storage"

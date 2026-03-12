@@ -192,113 +192,31 @@ async def video_search_api(
 @router.get("/video-matcher/download/youtube/{video_id}")
 async def download_youtube_video(video_id: str):
     """
-    Download a YouTube video using yt-dlp.
+    Download a YouTube video using yt-dlp (VideoLingo-compatible implementation).
     Returns the video file as a streaming response.
     """
     import asyncio
     from pathlib import Path
+    from services.ytdlp_service import download_video, update_ytdlp, YTDLPError, get_cookies_path
 
-    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
-
-    # Check if yt-dlp is available
-    try:
-        result = subprocess.run(["yt-dlp", "--version"], capture_output=True, text=True, timeout=5)
-        if result.returncode != 0:
-            raise HTTPException(status_code=500, detail="yt-dlp is not installed or not working properly")
-    except FileNotFoundError:
-        raise HTTPException(
-            status_code=500,
-            detail="yt-dlp is not installed. Please install it with: pip install yt-dlp"
-        )
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=500, detail="yt-dlp check timed out")
+    # Try to update yt-dlp first (like VideoLingo does)
+    await asyncio.get_event_loop().run_in_executor(None, update_ytdlp)
 
     # Create temp directory for download
     with tempfile.TemporaryDirectory() as temp_dir:
-        temp_path = Path(temp_dir)
-        output_template = str(temp_path / "%(title)s_%(id)s.%(ext)s")
-
         try:
-            # Run yt-dlp to download the video
-            # Using best quality up to 1080p for reasonable file sizes
-            cmd = [
-                "yt-dlp",
-                "-f", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best",
-                "--merge-output-format", "mp4",
-                "-o", output_template,
-                "--no-playlist",
-                "--quiet",
-                "--no-warnings",
-                # Options to bypass YouTube bot detection
-                "--user-agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                "--extractor-args", "youtube:player_client=web",
-                "--extractor-args", "youtube:player_skip=webpage,configs,js",
-                "--no-check-certificates",
-                # Additional options to handle common errors
-                "--retries", "3",
-                "--fragment-retries", "3",
-                "--skip-unavailable-fragments",
-                youtube_url
-            ]
-
-            logger.info(f"Starting yt-dlp download for video: {video_id}")
-
-            # Run yt-dlp in executor to not block the event loop
-            loop = asyncio.get_event_loop()
-            process = await loop.run_in_executor(
+            # Check if cookies are configured
+            cookies_path = get_cookies_path()
+            if not cookies_path:
+                logger.warning("No YouTube cookies configured. Download may fail due to bot detection.")
+            
+            # Download using VideoLingo-style implementation
+            video_file_path = await asyncio.get_event_loop().run_in_executor(
                 None,
-                lambda: subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                lambda: download_video(video_id, temp_dir, resolution="1080")
             )
-
-            if process.returncode != 0:
-                logger.error(f"yt-dlp failed: {process.stderr}")
-                error_msg = process.stderr or "Unknown error"
-                
-                # Provide user-friendly messages for common errors
-                if "Sign in to confirm" in error_msg or "not a bot" in error_msg:
-                    raise HTTPException(
-                        status_code=500, 
-                        detail="YouTube 检测到异常访问。请尝试以下方法：\n1. 在浏览器中登录 YouTube 账号后重试\n2. 或者使用 Pexels/Pixabay 的免费素材"
-                    )
-                elif "Video unavailable" in error_msg or "removed" in error_msg:
-                    raise HTTPException(
-                        status_code=404,
-                        detail="该视频已被删除或无法访问"
-                    )
-                elif "Private video" in error_msg or "private" in error_msg.lower():
-                    raise HTTPException(
-                        status_code=403,
-                        detail="该视频是私有的，无法下载"
-                    )
-                elif "copyright" in error_msg.lower() or "restricted" in error_msg.lower():
-                    raise HTTPException(
-                        status_code=403,
-                        detail="该视频受版权保护，无法下载"
-                    )
-                elif "confirm your age" in error_msg.lower() or "age-restricted" in error_msg.lower():
-                    raise HTTPException(
-                        status_code=403,
-                        detail="该视频有年龄限制，无法下载"
-                    )
-                elif "network" in error_msg.lower() or "connection" in error_msg.lower():
-                    raise HTTPException(
-                        status_code=503,
-                        detail="网络连接问题，请稍后重试"
-                    )
-                else:
-                    raise HTTPException(status_code=500, detail=f"下载失败: {error_msg[:200]}")
-
-            # Find the downloaded file
-            downloaded_files = list(temp_path.glob("*.mp4"))
-            if not downloaded_files:
-                # Check for other video formats
-                downloaded_files = list(temp_path.glob("*.*"))
-                video_files = [f for f in downloaded_files if f.suffix.lower() in ['.mp4', '.webm', '.mkv', '.mov']]
-                if not video_files:
-                    raise HTTPException(status_code=500, detail="Download completed but file not found")
-                downloaded_files = video_files
-
-            video_file = downloaded_files[0]
+            
+            video_file = Path(video_file_path)
             filename = video_file.name
 
             logger.info(f"Successfully downloaded: {filename}")
@@ -317,10 +235,34 @@ async def download_youtube_video(video_id: str):
                 }
             )
 
-        except subprocess.TimeoutExpired:
+        except YTDLPError as e:
+            logger.error(f"yt-dlp error ({e.error_type}): {e.message}")
+            
+            # Map YTDLPError to HTTP exceptions
+            error_mapping = {
+                "bot_detection": (
+                    503,
+                    "YouTube 检测到异常访问。解决方案（按推荐顺序）：\n\n"
+                    "1. 【推荐】优先使用 Pexels/Pixabay 的免费素材（无需登录，下载稳定）\n"
+                    "2. 在浏览器中登录 YouTube 账号后，导出 cookies 文件到项目目录\n"
+                    "3. 设置 YOUTUBE_COOKIES_PATH 环境变量指向 cookies 文件\n"
+                    "4. 使用家用网络/更换 IP 后重试"
+                ),
+                "unavailable": (404, "该视频已被删除或无法访问"),
+                "private": (403, "该视频是私有的，无法下载"),
+                "copyright": (403, "该视频受版权保护，无法下载"),
+                "age_restricted": (403, "该视频有年龄限制，无法下载"),
+                "network": (503, "网络连接问题，请稍后重试"),
+                "no_formats": (404, "无法获取视频下载链接"),
+            }
+            
+            status_code, detail = error_mapping.get(e.error_type, (500, f"下载失败: {e.message}"))
+            raise HTTPException(status_code=status_code, detail=detail)
+            
+        except asyncio.TimeoutError:
             raise HTTPException(status_code=504, detail="下载超时（超过5分钟），请稍后重试")
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error downloading YouTube video: {e}")
-            raise HTTPException(status_code=500, detail=f"下载失败: {str(e)}")
+            raise HTTPException(status_code=500, detail=f"下载失败: {str(e)[:200]}")

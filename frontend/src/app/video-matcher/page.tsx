@@ -526,8 +526,16 @@ export default function VideoMatcherPage() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch (error: any) {
-      alert(error.message || "YouTube视频下载失败");
-      console.error(error);
+      // Show detailed error message if available
+      const errorMessage = error.message || "YouTube视频下载失败";
+      console.error("YouTube download error:", error);
+      
+      // Check if it's the bot detection error and show helpful tip
+      if (errorMessage.includes("YouTube 检测到异常访问")) {
+        alert(`${errorMessage}\n\n💡 提示：在左侧设置中将「素材类型」切换为「视频」，系统会优先从 Pexels/Pixabay 获取稳定的免费素材。`);
+      } else {
+        alert(errorMessage);
+      }
     } finally {
       setDownloadingYoutube(null);
     }
@@ -1029,10 +1037,18 @@ export default function VideoMatcherPage() {
                                     </div>
                                   )}
                                 </div>
-                                {/* Source badge */}
+                                  {/* Source badge */}
                                 <div className={`px-2 py-1 text-[10px] font-bold uppercase text-center border-t ${sourceBadgeColor(cand.source)}`}>
                                   {cand.source}
                                 </div>
+                                {/* YouTube warning tooltip */}
+                                {cand.source === "youtube" && (
+                                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-sm">
+                                    <span className="text-[9px] text-white text-center px-2">
+                                      ⚠️ YouTube下载可能受限<br/>建议优先使用Pexels/Pixabay
+                                    </span>
+                                  </div>
+                                )}
                               </div>
                             );
                           })}
