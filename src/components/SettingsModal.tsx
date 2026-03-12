@@ -9,6 +9,7 @@ export interface SettingsConfig {
     savedModels: string[];
     ttsApiUrl: string;
     ttsToken: string;
+    pexelsApiKey: string;
 }
 
 type TestStatus = "idle" | "testing" | "success" | "error";
@@ -20,6 +21,7 @@ const DEFAULT_CONFIG: SettingsConfig = {
     savedModels: ["gpt-3.5-turbo", "gpt-4", "gpt-4o", "claude-3-5-sonnet-20240620", "deepseek-chat"],
     ttsApiUrl: "",
     ttsToken: "",
+    pexelsApiKey: "",
 };
 
 interface NvidiaModel {
@@ -527,6 +529,24 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                                     value={config.ttsToken}
                                     onChange={e => setConfig({ ...config, ttsToken: e.target.value })}
                                     placeholder="如不需要可留空"
+                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                        <div className="flex items-center justify-between">
+                            <h3 className="text-sm font-semibold text-slate-700">外部服务 (APIs) 设置</h3>
+                        </div>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Pexels API Key</label>
+                                <input
+                                    type="password"
+                                    value={config.pexelsApiKey || ""}
+                                    onChange={e => setConfig({ ...config, pexelsApiKey: e.target.value })}
+                                    placeholder="用于视频素材匹配"
                                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                                 />
                             </div>

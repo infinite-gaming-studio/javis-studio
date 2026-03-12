@@ -12,6 +12,7 @@ import {
   Scissors,
   X,
   Zap,
+  Film,
   Palette,
   Code,
 } from "lucide-react";
@@ -44,6 +45,15 @@ const tools: ToolItem[] = [
     icon: <FileImage className="w-5 h-5" />,
     href: "/pdf-to-image",
     color: "from-violet-500 to-purple-500",
+    badge: "New",
+  },
+  {
+    id: "video-matcher",
+    name: "AI 视频配图",
+    description: "智能匹配视频素材",
+    icon: <Film className="w-5 h-5" />,
+    href: "/video-matcher",
+    color: "from-blue-500 to-indigo-500",
     badge: "New",
   },
 ];

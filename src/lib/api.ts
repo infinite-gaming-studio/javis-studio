@@ -43,24 +43,25 @@ export interface TTSSingleResponse {
   duration_secs?: number;
 }
 
-interface GlobalSettings {
+export interface GlobalSettings {
   llmApiUrl: string;
   llmToken: string;
   llmModel: string;
   ttsApiUrl: string;
   ttsToken: string;
+  pexelsApiKey: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function getSettings(): GlobalSettings {
-  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "" };
+export function getSettings(): GlobalSettings {
+  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "" };
   const saved = localStorage.getItem("javis_studio_settings");
-  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "" };
+  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "" };
   try {
     return JSON.parse(saved);
   } catch {
-    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "" };
+    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "" };
   }
 }
 
