@@ -13,6 +13,7 @@ type MediaCandidate = {
   source: string;
   media_type: MediaType;
   media_url: string;
+  source_url: string;  // Original source page URL for attribution
   media_id: number;
   thumbnail_url: string;
   duration: number;
@@ -41,6 +42,7 @@ export default function VideoMatcherPage() {
   const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [previewMedia, setPreviewMedia] = useState<{url: string, type: MediaType} | null>(null);
+  const [downloadingYoutube, setDownloadingYoutube] = useState<string | null>(null);
 
   const handleMatch = async () => {
     if (!subtitleText.trim()) return;
@@ -61,6 +63,7 @@ export default function VideoMatcherPage() {
           "x-pexels-key": settings.pexelsApiKey || "",
           "x-pixabay-key": settings.pixabayApiKey || "",
           "x-youtube-key": settings.youtubeApiKey || "",
+          "x-unsplash-key": settings.unsplashApiKey || "",
         },
         body: JSON.stringify({
           text: subtitleText,
@@ -88,7 +91,7 @@ export default function VideoMatcherPage() {
 
   const handleReplace = async (idx: number, newMediaType?: MediaType) => {
     if (!editKeyword.trim() || replacingIndex !== null) return;
-    
+
     setReplacingIndex(idx);
     try {
       const settings = getSettings();
@@ -100,6 +103,7 @@ export default function VideoMatcherPage() {
           "x-pexels-key": settings.pexelsApiKey || "",
           "x-pixabay-key": settings.pixabayApiKey || "",
           "x-youtube-key": settings.youtubeApiKey || "",
+          "x-unsplash-key": settings.unsplashApiKey || "",
         },
         body: JSON.stringify({
           keyword: editKeyword.trim(),
@@ -136,10 +140,10 @@ export default function VideoMatcherPage() {
   // Toggle media type for a specific segment and re-search
   const handleToggleMediaType = async (idx: number, targetMediaType: MediaType) => {
     if (replacingIndex !== null) return;
-    
+
     const currentResult = results[idx];
     if (currentResult.media_type === targetMediaType) return;
-    
+
     setReplacingIndex(idx);
     try {
       const settings = getSettings();
@@ -150,6 +154,7 @@ export default function VideoMatcherPage() {
           "x-pexels-key": settings.pexelsApiKey || "",
           "x-pixabay-key": settings.pixabayApiKey || "",
           "x-youtube-key": settings.youtubeApiKey || "",
+          "x-unsplash-key": settings.unsplashApiKey || "",
         },
         body: JSON.stringify({
           keyword: currentResult.keyword,
@@ -212,7 +217,7 @@ export default function VideoMatcherPage() {
         readmeText += `- **素材类型**: ${isVideo ? "视频" : "图片"}\n`;
         readmeText += `- **素材来源**: ${selected.source}\n`;
         readmeText += `- **文件**: ${filename}\n`;
-        readmeText += `- **原始链接**: ${selected.media_url}\n\n`;
+        readmeText += `- **原素材链接**: ${selected.source_url || selected.media_url}\n\n`;
 
         const mediaRes = await fetch(selected.media_url);
         const mediaBlob = await mediaRes.blob();
@@ -238,6 +243,45 @@ export default function VideoMatcherPage() {
     }
   };
 
+  const handleDownloadYouTube = async (videoId: string, keyword: string) => {
+    if (downloadingYoutube) return;
+    
+    setDownloadingYoutube(videoId);
+    try {
+      const res = await fetch(`/api/v1/tools/video-matcher/download/youtube/${videoId}`, {
+        method: "GET",
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || `下载失败: HTTP ${res.status}`);
+      }
+
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = res.headers.get("content-disposition");
+      let filename = `${keyword.replace(/[^a-zA-Z0-9]/g, "_")}_${videoId}.mp4`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
+      }
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error: any) {
+      alert(error.message || "YouTube视频下载失败");
+      console.error(error);
+    } finally {
+      setDownloadingYoutube(null);
+    }
+  };
+
   const getStatus = () => {
     if (errorMsg) return "error";
     if (isProcessing) return "processing";
@@ -256,6 +300,7 @@ export default function VideoMatcherPage() {
     if (source === "pexels") return "bg-emerald-50 text-emerald-600 border-emerald-100";
     if (source === "pixabay") return "bg-amber-50 text-amber-600 border-amber-100";
     if (source === "youtube") return "bg-red-50 text-red-600 border-red-100";
+    if (source === "unsplash") return "bg-slate-800 text-white border-slate-700";
     return "bg-slate-50 text-slate-600 border-slate-100";
   };
 
@@ -279,7 +324,7 @@ export default function VideoMatcherPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-800">AI 视频配图</h1>
-              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay / YouTube 匹配对应素材。</p>
+              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay / YouTube / Unsplash 匹配对应素材。</p>
             </div>
           </div>
         </div>
@@ -540,6 +585,19 @@ export default function VideoMatcherPage() {
                                     alt={result.keyword}
                                     className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                                   />
+                                  {/* Source URL link - top right, small */}
+                                  <a 
+                                    href={cand.source_url || cand.media_url} 
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute top-1 right-1 z-10 w-5 h-5 rounded bg-black/50 hover:bg-black/70 flex items-center justify-center transition-colors"
+                                    title="查看原素材页面"
+                                  >
+                                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                  </a>
                                   {/* Hover overlay */}
                                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
                                     {isVideo ? (
@@ -559,16 +617,32 @@ export default function VideoMatcherPage() {
                                         <Image className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
                                       </button>
                                     )}
-                                    <a 
-                                      href={cand.media_url} 
-                                      download
-                                      target="_blank"
-                                      onClick={(e) => e.stopPropagation()}
-                                      className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
-                                      title={`下载${isVideo ? "视频" : "图片"}`}
-                                    >
-                                      <Download className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
-                                    </a>
+                                    {/* Download button */}
+                                    {cand.source === "youtube" ? (
+                                      <button 
+                                        onClick={(e) => { e.stopPropagation(); handleDownloadYouTube(cand.media_id, result.keyword); }}
+                                        disabled={downloadingYoutube === cand.media_id}
+                                        className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn disabled:opacity-50"
+                                        title="下载YouTube视频"
+                                      >
+                                        {downloadingYoutube === cand.media_id ? (
+                                          <Loader2 className="w-4 h-4 text-white animate-spin" />
+                                        ) : (
+                                          <Download className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
+                                        )}
+                                      </button>
+                                    ) : (
+                                      <a 
+                                        href={cand.media_url} 
+                                        download
+                                        target="_blank"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
+                                        title={`下载${isVideo ? "视频" : "图片"}`}
+                                      >
+                                        <Download className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
+                                      </a>
+                                    )}
                                   </div>
                                   {/* Duration badge (only for video) */}
                                   {isVideo && cand.duration > 0 && (
@@ -580,9 +654,9 @@ export default function VideoMatcherPage() {
                                   <div className="absolute top-1 left-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-medium text-white flex items-center gap-1">
                                     {isVideo ? <Film className="w-3 h-3" /> : <Image className="w-3 h-3" />}
                                   </div>
-                                  {/* Selected checkmark */}
+                                  {/* Selected checkmark - moved to bottom right when duration exists */}
                                   {isSelected && (
-                                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center shadow-sm">
+                                    <div className={`absolute ${isVideo && cand.duration > 0 ? 'bottom-1 left-1' : 'bottom-1 right-1'} w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center shadow-sm`}>
                                       <Check className="w-3 h-3 text-white" />
                                     </div>
                                   )}
@@ -626,12 +700,22 @@ export default function VideoMatcherPage() {
               ×
             </button>
             {previewMedia.type === "video" ? (
-              <video 
-                src={previewMedia.url} 
-                controls 
-                autoPlay 
-                className="w-full h-full"
-              />
+              previewMedia.url.includes("youtube.com/embed") ? (
+                <iframe
+                  src={previewMedia.url}
+                  title="YouTube video preview"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="w-full h-full"
+                />
+              ) : (
+                <video 
+                  src={previewMedia.url} 
+                  controls 
+                  autoPlay 
+                  className="w-full h-full"
+                />
+              )
             ) : (
               <img 
                 src={previewMedia.url} 

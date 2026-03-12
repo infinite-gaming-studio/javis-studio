@@ -14,7 +14,8 @@ MediaType = Literal["video", "photo"]
 class MediaCandidate(BaseModel):
     source: str          # "pexels", "pixabay", or "youtube"
     media_type: MediaType  # "video" or "photo"
-    media_url: str       # video_url or photo_url
+    media_url: str       # video_url or photo_url (direct download/play URL)
+    source_url: str      # Original source page URL (for attribution/linking)
     media_id: str        # Changed to str to support YouTube video IDs
     thumbnail_url: str
     duration: int = 0    # 0 for photos
@@ -29,6 +30,7 @@ class VideoCandidate(BaseModel):
     duration: int
     width: int
     height: int
+    source_url: str      # Original source page URL
 
 class SegmentMatch(BaseModel):
     segment: str
@@ -66,13 +68,31 @@ SYSTEM_PROMPT = """\
 ]
 """
 
+def normalize_llm_url(url: str) -> str:
+    """Normalize LLM API URL - remove /chat/completions suffix if present."""
+    if not url:
+        return "https://api.openai.com/v1"
+    url = url.strip()
+    # Remove trailing slashes
+    url = url.rstrip("/")
+    # Remove /chat/completions suffix (OpenAI client adds this automatically)
+    # Check longer pattern first to handle /v1/chat/completions correctly
+    if url.endswith("/v1/chat/completions"):
+        url = url[:-len("/chat/completions")]
+    elif url.endswith("/chat/completions"):
+        url = url[:-len("/chat/completions")]
+    logger.info(f"Normalized LLM URL: {url}")
+    return url
+
 async def extract_keywords(
     text: str,
     llm_url: str,
     llm_token: str,
     llm_model: str,
 ) -> List[Dict[str, str]]:
-    client = AsyncOpenAI(api_key=llm_token or "dummy", base_url=llm_url or "https://api.openai.com/v1")
+    base_url = normalize_llm_url(llm_url)
+    logger.info(f"Using LLM URL: {base_url}")
+    client = AsyncOpenAI(api_key=llm_token, base_url=base_url)
     
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -131,14 +151,16 @@ async def search_pexels_video(
                 if not best_file:
                     return None
                     
+                video_id = video.get("id", 0)
                 return VideoCandidate(
                     source="pexels",
-                    video_id=video.get("id", 0),
+                    video_id=video_id,
                     video_url=best_file.get("link", ""),
                     thumbnail_url=video.get("image", ""),
                     duration=video.get("duration", 0),
                     width=best_file.get("width", 0),
                     height=best_file.get("height", 0),
+                    source_url=f"https://www.pexels.com/video/{video_id}/",
                 )
         except Exception as e:
             logger.error(f"Pexels API error for keyword '{keyword}': {e}")
@@ -186,14 +208,16 @@ async def search_pixabay_video(
                         thumb = t
                         break
                 
+                video_id = video.get("id", 0)
                 return VideoCandidate(
                     source="pixabay",
-                    video_id=video.get("id", 0),
+                    video_id=video_id,
                     video_url=best.get("url", ""),
                     thumbnail_url=thumb,
                     duration=video.get("duration", 0),
                     width=best.get("width", 0),
                     height=best.get("height", 0),
+                    source_url=f"https://pixabay.com/videos/id-{video_id}/",
                 )
             else:
                 logger.info(f"Pixabay: no hits for '{keyword}'")
@@ -224,11 +248,13 @@ async def search_pexels_photo(
                 src = photo.get("src", {})
                 # Prefer landscape or large size
                 photo_url = src.get("landscape") or src.get("large") or src.get("original", "")
+                photo_id = photo.get("id", 0)
                 return MediaCandidate(
                     source="pexels",
                     media_type="photo",
-                    media_id=photo.get("id", 0),
+                    media_id=str(photo_id),
                     media_url=photo_url,
+                    source_url=f"https://www.pexels.com/photo/{photo_id}/",
                     thumbnail_url=src.get("medium") or src.get("small", ""),
                     duration=0,
                     width=photo.get("width", 0),
@@ -246,10 +272,10 @@ async def search_pixabay_photo(
 ) -> Optional[MediaCandidate]:
     if not pixabay_key:
         return None
-    
+
     encoded_kw = quote_plus(keyword)
     url = f"https://pixabay.com/api/?key={pixabay_key}&q={encoded_kw}&per_page=3&image_type=photo&orientation=horizontal"
-    
+
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, timeout=10)
@@ -259,11 +285,13 @@ async def search_pixabay_photo(
             logger.info(f"Pixabay photo search '{keyword}': {len(hits)} hits")
             if hits:
                 photo = hits[0]
+                photo_id = photo.get("id", 0)
                 return MediaCandidate(
                     source="pixabay",
                     media_type="photo",
-                    media_id=photo.get("id", 0),
+                    media_id=str(photo_id),
                     media_url=photo.get("largeImageURL") or photo.get("webformatURL", ""),
+                    source_url=f"https://pixabay.com/photos/id-{photo_id}/",
                     thumbnail_url=photo.get("previewURL") or photo.get("webformatURL", ""),
                     duration=0,
                     width=photo.get("imageWidth", 0),
@@ -275,6 +303,59 @@ async def search_pixabay_photo(
             logger.error(f"Pixabay photo API error for keyword '{keyword}': {e}")
     return None
 
+# ─── Unsplash Photos ─────────────────────────────────────────────────────────
+
+async def search_unsplash_photo(
+    keyword: str,
+    unsplash_key: str,
+) -> Optional[MediaCandidate]:
+    """Search Unsplash photos using Unsplash API."""
+    if not unsplash_key:
+        return None
+
+    encoded_kw = quote_plus(keyword)
+    url = f"https://api.unsplash.com/search/photos?query={encoded_kw}&per_page=1&orientation=landscape"
+    headers = {"Authorization": f"Client-ID {unsplash_key}"}
+
+    async with httpx.AsyncClient() as client:
+        try:
+            resp = await client.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+            results = data.get("results", [])
+            logger.info(f"Unsplash photo search '{keyword}': {len(results)} results")
+            if results:
+                photo = results[0]
+                photo_id = photo.get("id", "")
+                urls = photo.get("urls", {})
+                # Prefer regular size for media_url, small for thumbnail
+                photo_url = urls.get("regular") or urls.get("small") or urls.get("full", "")
+                thumb_url = urls.get("small") or urls.get("thumb") or urls.get("regular", "")
+                width = photo.get("width", 0)
+                height = photo.get("height", 0)
+
+                return MediaCandidate(
+                    source="unsplash",
+                    media_type="photo",
+                    media_id=str(photo_id),
+                    media_url=photo_url,
+                    source_url=photo.get("links", {}).get("html", f"https://unsplash.com/photos/{photo_id}"),
+                    thumbnail_url=thumb_url,
+                    duration=0,
+                    width=width,
+                    height=height,
+                )
+            else:
+                logger.info(f"Unsplash: no results for '{keyword}'")
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 403:
+                logger.error(f"Unsplash API error for keyword '{keyword}': Rate limit exceeded or invalid Access Key")
+            else:
+                logger.error(f"Unsplash API error for keyword '{keyword}': {e}")
+        except Exception as e:
+            logger.error(f"Unsplash API error for keyword '{keyword}': {e}")
+    return None
+
 # ─── Video to MediaCandidate converters ──────────────────────────────────────
 
 def video_to_media_candidate(video: VideoCandidate) -> MediaCandidate:
@@ -282,7 +363,8 @@ def video_to_media_candidate(video: VideoCandidate) -> MediaCandidate:
         source=video.source,
         media_type="video",
         media_url=video.video_url,
-        media_id=video.video_id,
+        source_url=video.source_url,
+        media_id=str(video.video_id),
         thumbnail_url=video.thumbnail_url,
         duration=video.duration,
         width=video.width,
@@ -301,12 +383,14 @@ async def search_youtube_video(
     
     # YouTube Data API v3 search endpoint
     # Using videoEmbeddable=true to ensure videos can be embedded
+    # Using videoLicense=creativeCommon to only return CC-licensed videos (remix-friendly)
     url = (
         f"https://www.googleapis.com/youtube/v3/search"
         f"?part=snippet"
         f"&q={quote_plus(keyword)}"
         f"&type=video"
         f"&videoEmbeddable=true"
+        f"&videoLicense=creativeCommon"
         f"&maxResults=1"
         f"&key={youtube_key}"
     )
@@ -345,7 +429,8 @@ async def search_youtube_video(
             return MediaCandidate(
                 source="youtube",
                 media_type="video",
-                media_url=watch_url,  # Direct link to watch page
+                media_url=embed_url,  # Embed URL for preview
+                source_url=watch_url,  # Original YouTube page for attribution
                 media_id=video_id,
                 thumbnail_url=thumbnail_url,
                 duration=0,  # YouTube search API doesn't return duration, would need additional call
@@ -370,9 +455,10 @@ async def search_all_sources(
     pexels_key: str,
     pixabay_key: str,
     youtube_key: str = "",
+    unsplash_key: str = "",
     media_type: MediaType = "video",
 ) -> List[MediaCandidate]:
-    """Search Pexels, Pixabay, and YouTube concurrently and return all found candidates."""
+    """Search Pexels, Pixabay, YouTube, and Unsplash concurrently and return all found candidates."""
     tasks = []
     if media_type == "video":
         if pexels_key:
@@ -381,16 +467,19 @@ async def search_all_sources(
             tasks.append(search_pixabay_video(keyword, pixabay_key))
         if youtube_key:
             tasks.append(search_youtube_video(keyword, youtube_key))
+        # Unsplash doesn't support videos
     else:  # photo
         if pexels_key:
             tasks.append(search_pexels_photo(keyword, pexels_key))
         if pixabay_key:
             tasks.append(search_pixabay_photo(keyword, pixabay_key))
+        if unsplash_key:
+            tasks.append(search_unsplash_photo(keyword, unsplash_key))
         # YouTube doesn't support photos
-    
+
     if not tasks:
         return []
-    
+
     results = await asyncio.gather(*tasks)
     if media_type == "video":
         # Convert VideoCandidate to MediaCandidate for pexels/pixabay
@@ -413,30 +502,31 @@ async def match_videos(
     pexels_key: str,
     pixabay_key: str = "",
     youtube_key: str = "",
+    unsplash_key: str = "",
     media_type: MediaType = "video",
 ) -> List[SegmentMatch]:
     # 1. Extract keywords via LLM
     segments_data = await extract_keywords(text, llm_url, llm_token, llm_model)
-    
+
     # 2. Search all sources concurrently for each segment
     async def process_segment(item: Dict[str, str]) -> Optional[SegmentMatch]:
         segment = item.get("segment", "")
         keyword = item.get("keyword", "")
         if not segment or not keyword:
             return None
-        
-        candidates = await search_all_sources(keyword, pexels_key, pixabay_key, youtube_key, media_type)
+
+        candidates = await search_all_sources(keyword, pexels_key, pixabay_key, youtube_key, unsplash_key, media_type)
         if not candidates:
             return None
-            
+
         return SegmentMatch(
             segment=segment,
             keyword=keyword,
             media_type=media_type,
             candidates=candidates,
         )
-    
+
     tasks = [process_segment(item) for item in segments_data]
     matched_results = await asyncio.gather(*tasks)
-    
+
     return [res for res in matched_results if res is not None]

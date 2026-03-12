@@ -12,6 +12,7 @@ export interface SettingsConfig {
     pexelsApiKey: string;
     pixabayApiKey: string;
     youtubeApiKey: string;
+    unsplashApiKey: string;
 }
 
 type TestStatus = "idle" | "testing" | "success" | "error";
@@ -26,6 +27,7 @@ const DEFAULT_CONFIG: SettingsConfig = {
     pexelsApiKey: "",
     pixabayApiKey: "",
     youtubeApiKey: "",
+    unsplashApiKey: "",
 };
 
 interface NvidiaModel {
@@ -57,6 +59,8 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     const [pixabayTestMsg, setPixabayTestMsg] = useState("");
     const [youtubeTestStatus, setYoutubeTestStatus] = useState<TestStatus>("idle");
     const [youtubeTestMsg, setYoutubeTestMsg] = useState("");
+    const [unsplashTestStatus, setUnsplashTestStatus] = useState<TestStatus>("idle");
+    const [unsplashTestMsg, setUnsplashTestMsg] = useState("");
 
     // Model fetching states
     const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
@@ -372,6 +376,43 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
         }
     };
 
+    const testUnsplashConnection = async () => {
+        setUnsplashTestStatus("testing");
+        setUnsplashTestMsg("");
+        try {
+            if (!config.unsplashApiKey) {
+                setUnsplashTestStatus("error");
+                setUnsplashTestMsg("请先填写 API Key");
+                return;
+            }
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: "https://api.unsplash.com/search/photos?query=nature&per_page=1",
+                    method: "GET",
+                    headers: {
+                        "Authorization": `Client-ID ${config.unsplashApiKey}`,
+                    }
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setUnsplashTestStatus("success");
+                setUnsplashTestMsg("连接成功！");
+            } else {
+                setUnsplashTestStatus("error");
+                const statusInfo = data.status ? `${data.status} ` : "";
+                setUnsplashTestMsg(`连接失败: ${statusInfo}${data.errorDetail || data.statusText || '未知错误'}`);
+            }
+        } catch (e: unknown) {
+            setUnsplashTestStatus("error");
+            setUnsplashTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
 
     if (!isMounted || !isOpen) return null;
 
@@ -421,9 +462,9 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200">
-                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 p-4 sm:p-6 lg:p-8">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-5xl max-h-[calc(100vh-4rem)] overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200 flex flex-col">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 flex-shrink-0">
                     <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                         <span>⚙️</span> 全局参数配置
                     </h2>
@@ -432,321 +473,359 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                     </button>
                 </div>
 
-                <div className="p-6 space-y-5">
-                    <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-slate-700">大模型 (LLM) 设置</h3>
-                            <div className="flex items-center gap-2">
-                                {llmTestMsg && (
-                                    <span className={`text-[10px] font-medium ${llmTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                        {llmTestMsg}
-                                    </span>
-                                )}
-                                <button
-                                    onClick={testLLMConnection}
-                                    disabled={llmTestStatus === "testing"}
-                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
-                                >
-                                    {llmTestStatus === "testing" ? "测试中..." : "测试连接"}
-                                </button>
+                <div className="p-6 overflow-y-auto">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                        {/* 左栏 */}
+                        <div className="space-y-5">
+                            {/* LLM 设置 */}
+                            <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-slate-700">大模型 (LLM) 设置</h3>
+                                    <div className="flex items-center gap-2">
+                                        {llmTestMsg && (
+                                            <span className={`text-[10px] font-medium ${llmTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                {llmTestMsg}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={testLLMConnection}
+                                            disabled={llmTestStatus === "testing"}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                        >
+                                            {llmTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">API 地址</label>
+                                        <input
+                                            type="text"
+                                            value={config.llmApiUrl}
+                                            onChange={e => setConfig({ ...config, llmApiUrl: e.target.value })}
+                                            placeholder="https://api.openai.com/v1"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Token (API Key)</label>
+                                        <input
+                                            type="password"
+                                            value={config.llmToken}
+                                            onChange={e => setConfig({ ...config, llmToken: e.target.value })}
+                                            placeholder="sk-..."
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                    </div>
+                                    <div className="relative" ref={modelDropdownRef}>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-medium text-slate-500">模型名称 (Model)</label>
+                                            <button
+                                                type="button"
+                                                onClick={fetchModels}
+                                                disabled={isFetchingModels || !config.llmApiUrl || !config.llmToken}
+                                                className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                                            >
+                                                {isFetchingModels ? (
+                                                    <>
+                                                        <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                                                        </svg>
+                                                        获取中...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                                                            <path d="M3 3v5h5" />
+                                                            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
+                                                            <path d="M16 16h5v5" />
+                                                        </svg>
+                                                        获取模型列表
+                                                    </>
+                                                )}
+                                            </button>
+                                        </div>
+                                        {fetchModelsError && (
+                                            <div className="text-[10px] text-red-500 mb-1">{fetchModelsError}</div>
+                                        )}
+                                        <div className="flex border border-slate-200 rounded-lg bg-white overflow-hidden focus-within:ring-2 focus-within:ring-violet-500 focus-within:border-transparent transition-all">
+                                            <input
+                                                ref={modelInputRef}
+                                                type="text"
+                                                value={config.llmModel || ""}
+                                                onChange={e => setConfig({ ...config, llmModel: e.target.value })}
+                                                onFocus={() => setShowModels(true)}
+                                                placeholder="输入或选择模型名"
+                                                className="w-full text-sm px-3 py-2 bg-transparent focus:outline-none flex-grow"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowModels(!showModels)}
+                                                className="px-3 py-2 text-slate-400 hover:text-slate-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                                            </button>
+                                        </div>
+                                        {showModels && (
+                                            <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
+                                                {/* Search input */}
+                                                <div className="p-2 border-b border-slate-100 bg-slate-50">
+                                                    <div className="relative">
+                                                        <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                            <circle cx="11" cy="11" r="8" />
+                                                            <path d="m21 21-4.3-4.3" />
+                                                        </svg>
+                                                        <input
+                                                            type="text"
+                                                            value={modelSearchQuery}
+                                                            onChange={e => setModelSearchQuery(e.target.value)}
+                                                            placeholder="搜索模型..."
+                                                            className="w-full text-xs pl-7 pr-3 py-1.5 border border-slate-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                {/* Models list */}
+                                                <div className="overflow-y-auto max-h-48">
+                                                    {filteredModels.length > 0 ? (
+                                                        filteredModels.map(model => (
+                                                            <div
+                                                                key={model.id}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0"
+                                                                onClick={() => {
+                                                                    setConfig({ ...config, llmModel: model.id });
+                                                                    setShowModels(false);
+                                                                    setModelSearchQuery("");
+                                                                }}
+                                                            >
+                                                                <div className="flex flex-col flex-grow min-w-0">
+                                                                    <span className="text-sm text-slate-700 truncate" title={model.id}>
+                                                                        {model.id}
+                                                                    </span>
+                                                                    {model.owned_by && model.owned_by !== model.id && (
+                                                                        <span className="text-[10px] text-slate-400 truncate">
+                                                                            {model.owned_by}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                                {config.llmModel === model.id && (
+                                                                    <svg className="text-violet-500 flex-shrink-0 ml-2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                                                        <path d="M20 6 9 17l-5-5" />
+                                                                    </svg>
+                                                                )}
+                                                            </div>
+                                                        ))
+                                                    ) : availableModels.length > 0 ? (
+                                                        <div className="px-3 py-4 text-center text-xs text-slate-400">
+                                                            未找到匹配的模型
+                                                        </div>
+                                                    ) : config.savedModels?.length > 0 ? (
+                                                        // Fallback to saved models if no API models fetched
+                                                        config.savedModels.map(model => (
+                                                            <div
+                                                                key={model}
+                                                                className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0"
+                                                                onClick={() => {
+                                                                    setConfig({ ...config, llmModel: model });
+                                                                    setShowModels(false);
+                                                                }}
+                                                            >
+                                                                <span className="text-sm text-slate-700 flex-grow">
+                                                                    {model}
+                                                                </span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setConfig({
+                                                                            ...config,
+                                                                            savedModels: (config.savedModels || []).filter(m => m !== model)
+                                                                        });
+                                                                    }}
+                                                                    className="opacity-0 group-hover:opacity-100 text-slate-400 hover:!text-red-500 p-1 rounded-md hover:bg-red-50 transition-all"
+                                                                    title="删除该模型"
+                                                                >
+                                                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+                                                                </button>
+                                                            </div>
+                                                        ))
+                                                    ) : (
+                                                        <div className="px-3 py-4 text-center text-xs text-slate-400">
+                                                            暂无模型，请点击"获取模型列表"
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* TTS 设置 */}
+                            <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-slate-700">语音合成 (TTS) 设置</h3>
+                                    <div className="flex items-center gap-2">
+                                        {ttsTestMsg && (
+                                            <span className={`text-[10px] font-medium ${ttsTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                {ttsTestMsg}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={testTTSConnection}
+                                            disabled={ttsTestStatus === "testing"}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                        >
+                                            {ttsTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">API 地址</label>
+                                        <input
+                                            type="text"
+                                            value={config.ttsApiUrl}
+                                            onChange={e => setConfig({ ...config, ttsApiUrl: e.target.value })}
+                                            placeholder="http://localhost:8000/v1"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-medium text-slate-500 mb-1">Token (API Key)</label>
+                                        <input
+                                            type="password"
+                                            value={config.ttsToken}
+                                            onChange={e => setConfig({ ...config, ttsToken: e.target.value })}
+                                            placeholder="如不需要可留空"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">API 地址</label>
-                                <input
-                                    type="text"
-                                    value={config.llmApiUrl}
-                                    onChange={e => setConfig({ ...config, llmApiUrl: e.target.value })}
-                                    placeholder="https://api.openai.com/v1"
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Token (API Key)</label>
-                                <input
-                                    type="password"
-                                    value={config.llmToken}
-                                    onChange={e => setConfig({ ...config, llmToken: e.target.value })}
-                                    placeholder="sk-..."
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                            </div>
-                            <div className="relative" ref={modelDropdownRef}>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="block text-xs font-medium text-slate-500">模型名称 (Model)</label>
-                                    <button
-                                        type="button"
-                                        onClick={fetchModels}
-                                        disabled={isFetchingModels || !config.llmApiUrl || !config.llmToken}
-                                        className="text-[10px] text-cyan-600 hover:text-cyan-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                                    >
-                                        {isFetchingModels ? (
-                                            <>
-                                                <svg className="animate-spin" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                                                </svg>
-                                                获取中...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                                                    <path d="M3 3v5h5" />
-                                                    <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-                                                    <path d="M16 16h5v5" />
-                                                </svg>
-                                                获取模型列表
-                                            </>
-                                        )}
-                                    </button>
+
+                        {/* 右栏 */}
+                        <div className="space-y-5">
+                            {/* 外部服务 APIs */}
+                            <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-slate-700">外部服务 (APIs) 设置</h3>
                                 </div>
-                                {fetchModelsError && (
-                                    <div className="text-[10px] text-red-500 mb-1">{fetchModelsError}</div>
-                                )}
-                                <div className="flex border border-slate-200 rounded-lg bg-white overflow-hidden focus-within:ring-2 focus-within:ring-violet-500 focus-within:border-transparent transition-all">
-                                    <input
-                                        ref={modelInputRef}
-                                        type="text"
-                                        value={config.llmModel || ""}
-                                        onChange={e => setConfig({ ...config, llmModel: e.target.value })}
-                                        onFocus={() => setShowModels(true)}
-                                        placeholder="输入或选择模型名"
-                                        className="w-full text-sm px-3 py-2 bg-transparent focus:outline-none flex-grow"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowModels(!showModels)}
-                                        className="px-3 py-2 text-slate-400 hover:text-slate-600 border-l border-slate-200 bg-slate-50 hover:bg-slate-100 transition-colors"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
-                                    </button>
-                                </div>
-                                {showModels && (
-                                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-60 overflow-hidden flex flex-col">
-                                        {/* Search input */}
-                                        <div className="p-2 border-b border-slate-100 bg-slate-50">
-                                            <div className="relative">
-                                                <svg className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                    <circle cx="11" cy="11" r="8" />
-                                                    <path d="m21 21-4.3-4.3" />
-                                                </svg>
-                                                <input
-                                                    type="text"
-                                                    value={modelSearchQuery}
-                                                    onChange={e => setModelSearchQuery(e.target.value)}
-                                                    placeholder="搜索模型..."
-                                                    className="w-full text-xs pl-7 pr-3 py-1.5 border border-slate-200 rounded bg-white focus:outline-none focus:ring-1 focus:ring-violet-500"
-                                                    onClick={(e) => e.stopPropagation()}
-                                                />
+                                <div className="space-y-3">
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-medium text-slate-500">Pexels API Key</label>
+                                            <div className="flex items-center gap-2">
+                                                {pexelsTestMsg && (
+                                                    <span className={`text-[10px] font-medium ${pexelsTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                        {pexelsTestMsg}
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={testPexelsConnection}
+                                                    disabled={pexelsTestStatus === "testing"}
+                                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                                >
+                                                    {pexelsTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                                </button>
                                             </div>
                                         </div>
-                                        {/* Models list */}
-                                        <div className="overflow-y-auto max-h-48">
-                                            {filteredModels.length > 0 ? (
-                                                filteredModels.map(model => (
-                                                    <div 
-                                                        key={model.id} 
-                                                        className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0"
-                                                        onClick={() => {
-                                                            setConfig({ ...config, llmModel: model.id });
-                                                            setShowModels(false);
-                                                            setModelSearchQuery("");
-                                                        }}
-                                                    >
-                                                        <div className="flex flex-col flex-grow min-w-0">
-                                                            <span className="text-sm text-slate-700 truncate" title={model.id}>
-                                                                {model.id}
-                                                            </span>
-                                                            {model.owned_by && model.owned_by !== model.id && (
-                                                                <span className="text-[10px] text-slate-400 truncate">
-                                                                    {model.owned_by}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        {config.llmModel === model.id && (
-                                                            <svg className="text-violet-500 flex-shrink-0 ml-2" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                                                <path d="M20 6 9 17l-5-5" />
-                                                            </svg>
-                                                        )}
-                                                    </div>
-                                                ))
-                                            ) : availableModels.length > 0 ? (
-                                                <div className="px-3 py-4 text-center text-xs text-slate-400">
-                                                    未找到匹配的模型
-                                                </div>
-                                            ) : config.savedModels?.length > 0 ? (
-                                                // Fallback to saved models if no API models fetched
-                                                config.savedModels.map(model => (
-                                                    <div 
-                                                        key={model} 
-                                                        className="flex items-center justify-between px-3 py-2 hover:bg-violet-50 group cursor-pointer border-b border-slate-50 last:border-0"
-                                                        onClick={() => {
-                                                            setConfig({ ...config, llmModel: model });
-                                                            setShowModels(false);
-                                                        }}
-                                                    >
-                                                        <span className="text-sm text-slate-700 flex-grow">
-                                                            {model}
-                                                        </span>
-                                                        <button
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                setConfig({
-                                                                    ...config,
-                                                                    savedModels: (config.savedModels || []).filter(m => m !== model)
-                                                                });
-                                                            }}
-                                                            className="opacity-0 group-hover:opacity-100 text-slate-400 hover:!text-red-500 p-1 rounded-md hover:bg-red-50 transition-all"
-                                                            title="删除该模型"
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
-                                                        </button>
-                                                    </div>
-                                                ))
-                                            ) : (
-                                                <div className="px-3 py-4 text-center text-xs text-slate-400">
-                                                    暂无模型，请点击"获取模型列表"
-                                                </div>
-                                            )}
+                                        <input
+                                            type="password"
+                                            value={config.pexelsApiKey || ""}
+                                            onChange={e => setConfig({ ...config, pexelsApiKey: e.target.value })}
+                                            placeholder="用于视频素材匹配 (pexels.com)"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-medium text-slate-500">Pixabay API Key</label>
+                                            <div className="flex items-center gap-2">
+                                                {pixabayTestMsg && (
+                                                    <span className={`text-[10px] font-medium ${pixabayTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                        {pixabayTestMsg}
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={testPixabayConnection}
+                                                    disabled={pixabayTestStatus === "testing"}
+                                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                                >
+                                                    {pixabayTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                                </button>
+                                            </div>
                                         </div>
+                                        <input
+                                            type="password"
+                                            value={config.pixabayApiKey || ""}
+                                            onChange={e => setConfig({ ...config, pixabayApiKey: e.target.value })}
+                                            placeholder="用于视频素材匹配 (pixabay.com)"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
                                     </div>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-slate-700">语音合成 (TTS) 设置</h3>
-                            <div className="flex items-center gap-2">
-                                {ttsTestMsg && (
-                                    <span className={`text-[10px] font-medium ${ttsTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                        {ttsTestMsg}
-                                    </span>
-                                )}
-                                <button
-                                    onClick={testTTSConnection}
-                                    disabled={ttsTestStatus === "testing"}
-                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
-                                >
-                                    {ttsTestStatus === "testing" ? "测试中..." : "测试连接"}
-                                </button>
-                            </div>
-                        </div>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">API 地址</label>
-                                <input
-                                    type="text"
-                                    value={config.ttsApiUrl}
-                                    onChange={e => setConfig({ ...config, ttsApiUrl: e.target.value })}
-                                    placeholder="http://localhost:8000/v1"
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Token (API Key)</label>
-                                <input
-                                    type="password"
-                                    value={config.ttsToken}
-                                    onChange={e => setConfig({ ...config, ttsToken: e.target.value })}
-                                    placeholder="如不需要可留空"
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="space-y-3 p-4 bg-slate-50 rounded-xl border border-slate-100">
-                        <div className="flex items-center justify-between">
-                            <h3 className="text-sm font-semibold text-slate-700">外部服务 (APIs) 设置</h3>
-                        </div>
-                        <div className="space-y-3">
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="block text-xs font-medium text-slate-500">Pexels API Key</label>
-                                    <div className="flex items-center gap-2">
-                                        {pexelsTestMsg && (
-                                            <span className={`text-[10px] font-medium ${pexelsTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                {pexelsTestMsg}
-                                            </span>
-                                        )}
-                                        <button
-                                            onClick={testPexelsConnection}
-                                            disabled={pexelsTestStatus === "testing"}
-                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
-                                        >
-                                            {pexelsTestStatus === "testing" ? "测试中..." : "测试连接"}
-                                        </button>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-medium text-slate-500">YouTube Data API Key</label>
+                                            <div className="flex items-center gap-2">
+                                                {youtubeTestMsg && (
+                                                    <span className={`text-[10px] font-medium ${youtubeTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                        {youtubeTestMsg}
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={testYoutubeConnection}
+                                                    disabled={youtubeTestStatus === "testing"}
+                                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                                >
+                                                    {youtubeTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <input
+                                            type="password"
+                                            value={config.youtubeApiKey || ""}
+                                            onChange={e => setConfig({ ...config, youtubeApiKey: e.target.value })}
+                                            placeholder="用于视频素材匹配 (仅支持视频，developers.google.com/youtube)"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1">YouTube API 仅支持视频搜索，暂不支持图片</p>
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center justify-between mb-1">
+                                            <label className="block text-xs font-medium text-slate-500">Unsplash Access Key</label>
+                                            <div className="flex items-center gap-2">
+                                                {unsplashTestMsg && (
+                                                    <span className={`text-[10px] font-medium ${unsplashTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                        {unsplashTestMsg}
+                                                    </span>
+                                                )}
+                                                <button
+                                                    onClick={testUnsplashConnection}
+                                                    disabled={unsplashTestStatus === "testing"}
+                                                    className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                                >
+                                                    {unsplashTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <input
+                                            type="password"
+                                            value={config.unsplashApiKey || ""}
+                                            onChange={e => setConfig({ ...config, unsplashApiKey: e.target.value })}
+                                            placeholder="用于图片素材匹配 (unsplash.com)"
+                                            className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                        />
+                                        <p className="text-[10px] text-slate-400 mt-1">Unsplash API 仅支持图片搜索，暂不支持视频</p>
                                     </div>
                                 </div>
-                                <input
-                                    type="password"
-                                    value={config.pexelsApiKey || ""}
-                                    onChange={e => setConfig({ ...config, pexelsApiKey: e.target.value })}
-                                    placeholder="用于视频素材匹配 (pexels.com)"
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                            </div>
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="block text-xs font-medium text-slate-500">Pixabay API Key</label>
-                                    <div className="flex items-center gap-2">
-                                        {pixabayTestMsg && (
-                                            <span className={`text-[10px] font-medium ${pixabayTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                {pixabayTestMsg}
-                                            </span>
-                                        )}
-                                        <button
-                                            onClick={testPixabayConnection}
-                                            disabled={pixabayTestStatus === "testing"}
-                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
-                                        >
-                                            {pixabayTestStatus === "testing" ? "测试中..." : "测试连接"}
-                                        </button>
-                                    </div>
-                                </div>
-                                <input
-                                    type="password"
-                                    value={config.pixabayApiKey || ""}
-                                    onChange={e => setConfig({ ...config, pixabayApiKey: e.target.value })}
-                                    placeholder="用于视频素材匹配 (pixabay.com)"
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                            </div>
-                            <div>
-                                <div className="flex items-center justify-between mb-1">
-                                    <label className="block text-xs font-medium text-slate-500">YouTube Data API Key</label>
-                                    <div className="flex items-center gap-2">
-                                        {youtubeTestMsg && (
-                                            <span className={`text-[10px] font-medium ${youtubeTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                {youtubeTestMsg}
-                                            </span>
-                                        )}
-                                        <button
-                                            onClick={testYoutubeConnection}
-                                            disabled={youtubeTestStatus === "testing"}
-                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
-                                        >
-                                            {youtubeTestStatus === "testing" ? "测试中..." : "测试连接"}
-                                        </button>
-                                    </div>
-                                </div>
-                                <input
-                                    type="password"
-                                    value={config.youtubeApiKey || ""}
-                                    onChange={e => setConfig({ ...config, youtubeApiKey: e.target.value })}
-                                    placeholder="用于视频素材匹配 (仅支持视频，developers.google.com/youtube)"
-                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
-                                />
-                                <p className="text-[10px] text-slate-400 mt-1">YouTube API 仅支持视频搜索，暂不支持图片</p>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between flex-shrink-0">
                     <div className="flex gap-2">
                         <button
                             onClick={handleExport}

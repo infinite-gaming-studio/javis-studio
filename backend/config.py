@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     pexels_api_key: str = ""
     pixabay_api_key: str = ""
     youtube_api_key: str = ""
+    unsplash_api_key: str = ""
 
     # Storage
     storage_dir: str = "./storage"

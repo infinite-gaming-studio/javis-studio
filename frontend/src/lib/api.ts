@@ -52,18 +52,19 @@ export interface GlobalSettings {
   pexelsApiKey: string;
   pixabayApiKey: string;
   youtubeApiKey: string;
+  unsplashApiKey: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getSettings(): GlobalSettings {
-  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "" };
+  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", unsplashApiKey: "" };
   const saved = localStorage.getItem("javis_studio_settings");
-  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "" };
+  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", unsplashApiKey: "" };
   try {
     return JSON.parse(saved);
   } catch {
-    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "" };
+    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", unsplashApiKey: "" };
   }
 }
 
@@ -83,6 +84,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
       "x-pexels-key": settings.pexelsApiKey || "",
       "x-pixabay-key": settings.pixabayApiKey || "",
       "x-youtube-key": settings.youtubeApiKey || "",
+      "x-unsplash-key": settings.unsplashApiKey || "",
     },
     body: JSON.stringify(body),
   });
