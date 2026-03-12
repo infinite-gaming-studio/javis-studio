@@ -1,0 +1,169 @@
+import asyncio
+import base64
+import logging
+import os
+import tempfile
+import uuid
+from pathlib import Path
+from typing import Optional
+
+import httpx
+from gradio_client import Client, handle_file
+
+from config import get_settings
+from models.schemas import EmotionMode, VoiceSettings
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+# Emotion hint → emo_vector mapping
+# Order: [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
+_EMOTION_HINT_VECTORS: dict[str, list[float]] = {
+    "happy":        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "angry":        [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "sad":          [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+    "afraid":       [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+    "disgusted":    [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+    "melancholic":  [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+    "surprised":    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+    "calm":         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+    "neutral":      [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+}
+
+
+def _decode_audio_to_tmp(audio_str: str, suffix: str = ".wav") -> str:
+    """
+    Accepts a base64 data URI or a URL and returns a local temp file path.
+    If already a local path, returns as-is.
+    """
+    if audio_str.startswith("data:"):
+        _, b64 = audio_str.split(",", 1)
+        data = base64.b64decode(b64)
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(data)
+        tmp.close()
+        return tmp.name
+
+    if audio_str.startswith("http"):
+        resp = httpx.get(audio_str, timeout=30)
+        resp.raise_for_status()
+        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        tmp.write(resp.content)
+        tmp.close()
+        return tmp.name
+
+    # Assume local path
+    return audio_str
+
+
+def _build_emo_vector(
+    vs: VoiceSettings,
+    emotion_hint: Optional[str] = None,
+) -> Optional[list[float]]:
+    """Build the emo_vector for IndexTTS2 if needed."""
+    if vs.emotion_mode == EmotionMode.vector and vs.emo_vector:
+        return vs.emo_vector
+    if emotion_hint and emotion_hint.lower() in _EMOTION_HINT_VECTORS:
+        return _EMOTION_HINT_VECTORS[emotion_hint.lower()]
+    return None
+
+
+async def synthesize_gradio(
+    text: str,
+    voice_settings: VoiceSettings,
+    output_path: str,
+    emotion_hint: Optional[str] = None,
+) -> str:
+    """
+    Call IndexTTS2 via Gradio client API.
+
+    The Gradio API for IndexTTS2 WebUI exposes tts inference under the
+    /gen_single endpoint (as identified from the webui source).
+    We run this in a thread executor since gradio_client is synchronous.
+    """
+
+    def _call():
+        client = Client(settings.indextts_api_url)
+
+        spk_path = _decode_audio_to_tmp(voice_settings.spk_audio_prompt)
+        try:
+            # Build kwargs based on emotion mode
+            kwargs: dict = {
+                "prompt": handle_file(spk_path),
+                "input_text": text,
+                "infer_mode": "预训练音色",  # default mode: voice clone
+            }
+
+            if voice_settings.emotion_mode == EmotionMode.audio and voice_settings.emo_audio_prompt:
+                emo_path = _decode_audio_to_tmp(voice_settings.emo_audio_prompt)
+                kwargs["emo_audio"] = handle_file(emo_path)
+                kwargs["infer_mode"] = "情感复刻"
+
+            emo_vec = _build_emo_vector(voice_settings, emotion_hint)
+            if emo_vec is not None:
+                # Pass via emo_vector — map to individual float sliders if the API requires
+                # IndexTTS Gradio API passes emo vector as a list of 8 floats
+                kwargs["emo_happy"] = emo_vec[0]
+                kwargs["emo_angry"] = emo_vec[1]
+                kwargs["emo_sad"] = emo_vec[2]
+                kwargs["emo_afraid"] = emo_vec[3]
+                kwargs["emo_disgusted"] = emo_vec[4]
+                kwargs["emo_melancholic"] = emo_vec[5]
+                kwargs["emo_surprised"] = emo_vec[6]
+                kwargs["emo_calm"] = emo_vec[7]
+                kwargs["infer_mode"] = "情感控制"
+
+            if voice_settings.emotion_mode == EmotionMode.text:
+                kwargs["emo_text"] = voice_settings.emo_text or ""
+                kwargs["use_emo_text"] = True
+                kwargs["emo_alpha"] = voice_settings.emo_alpha
+                kwargs["infer_mode"] = "情感控制"
+
+            if voice_settings.emotion_mode == EmotionMode.audio:
+                kwargs["emo_alpha"] = voice_settings.emo_alpha
+
+            result = client.predict(**kwargs, api_name="/gen_single")
+            # result is typically a file path or URL returned by Gradio
+            return result
+
+        finally:
+            # Cleanup temp spk file if we created one
+            if spk_path != voice_settings.spk_audio_prompt and os.path.exists(spk_path):
+                os.unlink(spk_path)
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _call)
+
+    # Copy result to our output_path
+    import shutil
+    if isinstance(result, (list, tuple)):
+        result = result[0]
+    # result may be a dict like {"name": "/tmp/xxx.wav", ...} from Gradio
+    if isinstance(result, dict):
+        result = result.get("name") or result.get("path") or list(result.values())[0]
+
+    shutil.copy2(str(result), output_path)
+    logger.info("TTS synthesis done → %s", output_path)
+    return output_path
+
+
+async def synthesize(
+    text: str,
+    voice_settings: VoiceSettings,
+    output_dir: str,
+    filename: Optional[str] = None,
+    emotion_hint: Optional[str] = None,
+) -> str:
+    """
+    High-level synthesis entry point.
+    Returns the absolute path to the generated WAV file.
+    """
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
+    fname = filename or f"{uuid.uuid4().hex}.wav"
+    output_path = str(Path(output_dir) / fname)
+
+    mode = settings.indextts_mode.lower()
+    if mode == "gradio":
+        return await synthesize_gradio(text, voice_settings, output_path, emotion_hint)
+
+    raise NotImplementedError(f"Unsupported indextts_mode: {mode}")

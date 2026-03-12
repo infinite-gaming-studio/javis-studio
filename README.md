@@ -1,36 +1,56 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Javis Studio
+
+**Javis Studio** is an AI-powered voiceover studio. It takes product images and prompts, uses a Vision-Language Model (OpenAI GPT-4o or Google Gemini) to draft professional narration scripts, and synthesizes continuous highly-expressive audio using the **IndexTTS2 API**.
+
+## Features
+
+- **End-to-End Pipeline**: Image + Prompt → LLM Script → IndexTTS2 Audio.
+- **Visual Editing**: Edit the drafted script segment-by-segment before synthesis.
+- **Emotion Control**: Assign emotion hints (Happy, Calm, Sad, etc.) individually to segments.
+- **Voice Cloning**: Provide a simple `<speaker>.wav` file to clone the speaker's voice.
+- **Multiple Emotion Modes**: Use an audio prompt, a 8-dim vector, text prompts, or purely the script context to guide emotions.
+- **Continuous Concatenation**: Auto-join synthesized segments into a single cohesive audio track.
+
+## Architecture
+
+* **Backend**: FastAPI (Python), `pydub` (Audio), `gradio_client` (IndexTTS API).
+* **Frontend**: Next.js, Tailwind CSS.
 
 ## Getting Started
 
-First, run the development server:
+1. Set up the environment variables:
+   ```bash
+   cp .env.example .env
+   # Edit .env and supply your LLM keys (OpenAI or Gemini)
+   ```
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+2. Make sure you have a locally (or remotely) running IndexTTS2 Gradio WebUI instance. The app uses `http://localhost:7860` as the default endpoint.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+3. Run locally via Docker Compose:
+   ```bash
+   docker-compose up --build
+   ```
+   **OR** run manually:
+   ```bash
+   # Backend
+   cd backend
+   pip install -r requirements.txt
+   uvicorn main:app --reload
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+   # Frontend
+   cd frontend
+   npm install
+   npm run dev
+   ```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. Open your browser and go to `http://localhost:3000`.
 
-## Learn More
+## Audio Settings for IndexTTS2
 
-To learn more about Next.js, take a look at the following resources:
+When using Javis Studio, you must upload a **Speaker Reference Audio** (`.wav` or `.mp3`). IndexTTS2 uses this to perform zero-shot cloning.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+You can then select how to control emotion:
+- **Audio Mode**: Upload a reference audio and set an emotion strength alpha.
+- **Vector Mode**: Manually tweak the 8-dim emotion space.
+- **Text Mode**: Input an emotional descriptor (e.g. "excited and fast").
+- **Script Mode**: Let IndexTTS infer emotions directly from the script context.
