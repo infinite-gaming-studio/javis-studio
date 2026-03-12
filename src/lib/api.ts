@@ -50,18 +50,19 @@ export interface GlobalSettings {
   ttsApiUrl: string;
   ttsToken: string;
   pexelsApiKey: string;
+  pixabayApiKey: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getSettings(): GlobalSettings {
-  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "" };
+  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "" };
   const saved = localStorage.getItem("javis_studio_settings");
-  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "" };
+  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "" };
   try {
     return JSON.parse(saved);
   } catch {
-    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "" };
+    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "" };
   }
 }
 
@@ -78,6 +79,8 @@ async function post<T>(path: string, body: unknown): Promise<T> {
       "x-llm-model": settings.llmModel,
       "x-tts-url": settings.ttsApiUrl,
       "x-tts-token": settings.ttsToken,
+      "x-pexels-key": settings.pexelsApiKey || "",
+      "x-pixabay-key": settings.pixabayApiKey || "",
     },
     body: JSON.stringify(body),
   });

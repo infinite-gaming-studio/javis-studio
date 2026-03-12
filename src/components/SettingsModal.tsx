@@ -10,6 +10,7 @@ export interface SettingsConfig {
     ttsApiUrl: string;
     ttsToken: string;
     pexelsApiKey: string;
+    pixabayApiKey: string;
 }
 
 type TestStatus = "idle" | "testing" | "success" | "error";
@@ -22,6 +23,7 @@ const DEFAULT_CONFIG: SettingsConfig = {
     ttsApiUrl: "",
     ttsToken: "",
     pexelsApiKey: "",
+    pixabayApiKey: "",
 };
 
 interface NvidiaModel {
@@ -47,6 +49,10 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
     const [llmTestMsg, setLlmTestMsg] = useState("");
     const [ttsTestStatus, setTtsTestStatus] = useState<TestStatus>("idle");
     const [ttsTestMsg, setTtsTestMsg] = useState("");
+    const [pexelsTestStatus, setPexelsTestStatus] = useState<TestStatus>("idle");
+    const [pexelsTestMsg, setPexelsTestMsg] = useState("");
+    const [pixabayTestStatus, setPixabayTestStatus] = useState<TestStatus>("idle");
+    const [pixabayTestMsg, setPixabayTestMsg] = useState("");
 
     // Model fetching states
     const [availableModels, setAvailableModels] = useState<NvidiaModel[]>([]);
@@ -249,6 +255,79 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
             setTtsTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
         }
     };
+
+    const testPexelsConnection = async () => {
+        setPexelsTestStatus("testing");
+        setPexelsTestMsg("");
+        try {
+            if (!config.pexelsApiKey) {
+                setPexelsTestStatus("error");
+                setPexelsTestMsg("请先填写 API Key");
+                return;
+            }
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: "https://api.pexels.com/v1/search?query=nature&per_page=1",
+                    method: "GET",
+                    headers: {
+                        "Authorization": config.pexelsApiKey,
+                    }
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setPexelsTestStatus("success");
+                setPexelsTestMsg("连接成功！");
+            } else {
+                setPexelsTestStatus("error");
+                const statusInfo = data.status ? `${data.status} ` : "";
+                setPexelsTestMsg(`连接失败: ${statusInfo}${data.errorDetail || data.statusText || '未知错误'}`);
+            }
+        } catch (e: unknown) {
+            setPexelsTestStatus("error");
+            setPexelsTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
+    const testPixabayConnection = async () => {
+        setPixabayTestStatus("testing");
+        setPixabayTestMsg("");
+        try {
+            if (!config.pixabayApiKey) {
+                setPixabayTestStatus("error");
+                setPixabayTestMsg("请先填写 API Key");
+                return;
+            }
+
+            const res = await fetch("/api/test-connection", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    url: `https://pixabay.com/api/videos/?key=${config.pixabayApiKey}&q=test&per_page=3`,
+                    method: "GET",
+                    headers: {}
+                })
+            });
+
+            const data = await res.json();
+            if (data.ok) {
+                setPixabayTestStatus("success");
+                setPixabayTestMsg("连接成功！");
+            } else {
+                setPixabayTestStatus("error");
+                const statusInfo = data.status ? `${data.status} ` : "";
+                setPixabayTestMsg(`连接失败: ${statusInfo}${data.errorDetail || data.statusText || '未知错误'}`);
+            }
+        } catch (e: unknown) {
+            setPixabayTestStatus("error");
+            setPixabayTestMsg(`请求异常: ${e instanceof Error ? e.message : String(e)}`);
+        }
+    };
+
 
     if (!isMounted || !isOpen) return null;
 
@@ -541,12 +620,54 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                         </div>
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-xs font-medium text-slate-500 mb-1">Pexels API Key</label>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-xs font-medium text-slate-500">Pexels API Key</label>
+                                    <div className="flex items-center gap-2">
+                                        {pexelsTestMsg && (
+                                            <span className={`text-[10px] font-medium ${pexelsTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                {pexelsTestMsg}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={testPexelsConnection}
+                                            disabled={pexelsTestStatus === "testing"}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                        >
+                                            {pexelsTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                        </button>
+                                    </div>
+                                </div>
                                 <input
                                     type="password"
                                     value={config.pexelsApiKey || ""}
                                     onChange={e => setConfig({ ...config, pexelsApiKey: e.target.value })}
-                                    placeholder="用于视频素材匹配"
+                                    placeholder="用于视频素材匹配 (pexels.com)"
+                                    className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
+                                />
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="block text-xs font-medium text-slate-500">Pixabay API Key</label>
+                                    <div className="flex items-center gap-2">
+                                        {pixabayTestMsg && (
+                                            <span className={`text-[10px] font-medium ${pixabayTestStatus === 'success' ? 'text-emerald-500' : 'text-red-500'}`}>
+                                                {pixabayTestMsg}
+                                            </span>
+                                        )}
+                                        <button
+                                            onClick={testPixabayConnection}
+                                            disabled={pixabayTestStatus === "testing"}
+                                            className="px-2 py-0.5 text-[10px] font-bold text-cyan-600 border border-cyan-200 rounded bg-cyan-50 hover:bg-cyan-100 transition-colors disabled:opacity-50"
+                                        >
+                                            {pixabayTestStatus === "testing" ? "测试中..." : "测试连接"}
+                                        </button>
+                                    </div>
+                                </div>
+                                <input
+                                    type="password"
+                                    value={config.pixabayApiKey || ""}
+                                    onChange={e => setConfig({ ...config, pixabayApiKey: e.target.value })}
+                                    placeholder="用于视频素材匹配 (pixabay.com)"
                                     className="w-full text-sm border border-slate-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition-all"
                                 />
                             </div>

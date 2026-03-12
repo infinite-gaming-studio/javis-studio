@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Download, Film, Loader2, Play } from "lucide-react";
+import JSZip from "jszip";
+import { Download, Film, Loader2, Play, Edit2, Search, Check } from "lucide-react";
 import { getSettings } from "@/lib/api";
+import GlobalHeader from "@/components/GlobalHeader";
+import SettingsModal from "@/components/SettingsModal";
 
-type MatchResult = {
-  segment: string;
-  keyword: string;
+type VideoCandidate = {
+  source: string;
   video_url: string;
   video_id: number;
   thumbnail_url: string;
@@ -15,11 +17,25 @@ type MatchResult = {
   height: number;
 };
 
+type SegmentMatch = {
+  segment: string;
+  keyword: string;
+  candidates: VideoCandidate[];
+  selectedIndex: number; // which candidate is selected
+};
+
 export default function VideoMatcherPage() {
   const [subtitleText, setSubtitleText] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
-  const [results, setResults] = useState<MatchResult[]>([]);
+  const [results, setResults] = useState<SegmentMatch[]>([]);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editKeyword, setEditKeyword] = useState("");
+  const [replacingIndex, setReplacingIndex] = useState<number | null>(null);
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [previewVideo, setPreviewVideo] = useState<string | null>(null);
 
   const handleMatch = async () => {
     if (!subtitleText.trim()) return;
@@ -38,6 +54,7 @@ export default function VideoMatcherPage() {
           "x-llm-token": settings.llmToken,
           "x-llm-model": settings.llmModel,
           "x-pexels-key": settings.pexelsApiKey || "",
+          "x-pixabay-key": settings.pixabayApiKey || "",
         },
         body: JSON.stringify({
           text: subtitleText,
@@ -50,7 +67,11 @@ export default function VideoMatcherPage() {
       }
 
       const data = await res.json();
-      setResults(data.matches || []);
+      const matches: SegmentMatch[] = (data.matches || []).map((m: any) => ({
+        ...m,
+        selectedIndex: 0,
+      }));
+      setResults(matches);
     } catch (error: any) {
       setErrorMsg(error.message || "Failed to match videos");
     } finally {
@@ -58,19 +79,143 @@ export default function VideoMatcherPage() {
     }
   };
 
+  const handleReplace = async (idx: number) => {
+    if (!editKeyword.trim() || replacingIndex !== null) return;
+    
+    setReplacingIndex(idx);
+    try {
+      const settings = getSettings();
+      const res = await fetch("/api/v1/tools/video-matcher/search", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-pexels-key": settings.pexelsApiKey || "",
+          "x-pixabay-key": settings.pixabayApiKey || "",
+        },
+        body: JSON.stringify({
+          keyword: editKeyword.trim(),
+          segment: results[idx].segment,
+        }),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || `HTTP Error ${res.status}`);
+      }
+
+      const data = await res.json();
+      setResults(prev => {
+        const newResults = [...prev];
+        newResults[idx] = {
+          segment: data.segment,
+          keyword: data.keyword,
+          candidates: data.candidates,
+          selectedIndex: 0,
+        };
+        return newResults;
+      });
+      setEditingIndex(null);
+    } catch (error: any) {
+      alert(error.message || "替换失败");
+    } finally {
+      setReplacingIndex(null);
+    }
+  };
+
+  const handleSelectCandidate = (segIdx: number, candIdx: number) => {
+    setResults(prev => {
+      const newResults = [...prev];
+      newResults[segIdx] = { ...newResults[segIdx], selectedIndex: candIdx };
+      return newResults;
+    });
+  };
+
+  const handleDownloadAll = async () => {
+    if (results.length === 0) return;
+    setIsDownloadingAll(true);
+    try {
+      const zip = new JSZip();
+      let readmeText = "# 视频配图说明文档\n\n";
+
+      for (let i = 0; i < results.length; i++) {
+        const seg = results[i];
+        const selected = seg.candidates[seg.selectedIndex];
+        if (!selected) continue;
+        
+        const filename = `${String(i + 1).padStart(2, '0')}_${seg.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.mp4`;
+        
+        readmeText += `## 镜头 ${i + 1}\n`;
+        readmeText += `- **解说文案**: ${seg.segment}\n`;
+        readmeText += `- **搜索关键词**: ${seg.keyword}\n`;
+        readmeText += `- **素材来源**: ${selected.source}\n`;
+        readmeText += `- **视频文件**: ${filename}\n`;
+        readmeText += `- **原始链接**: ${selected.video_url}\n\n`;
+
+        const videoRes = await fetch(selected.video_url);
+        const videoBlob = await videoRes.blob();
+        zip.file(filename, videoBlob);
+      }
+
+      zip.file("README.md", readmeText);
+
+      const content = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(content);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "video_matches.zip";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert("打包下载失败，请检查网络或重试");
+      console.error(error);
+    } finally {
+      setIsDownloadingAll(false);
+    }
+  };
+
+  const getStatus = () => {
+    if (errorMsg) return "error";
+    if (isProcessing) return "processing";
+    if (results.length > 0) return "done";
+    return "idle";
+  };
+
+  const getStatusText = () => {
+    if (errorMsg) return "出错了";
+    if (isProcessing) return "匹配中...";
+    if (results.length > 0) return "已完成";
+    return "就绪";
+  };
+
+  const sourceBadgeColor = (source: string) => {
+    if (source === "pexels") return "bg-emerald-50 text-emerald-600 border-emerald-100";
+    if (source === "pixabay") return "bg-amber-50 text-amber-600 border-amber-100";
+    return "bg-slate-50 text-slate-600 border-slate-100";
+  };
+
   return (
-    <div className="min-h-[calc(100vh-3.5rem)] bg-slate-50/50 p-6">
-      <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="min-h-screen bg-gradient-to-br from-[#f0f9ff] via-[#ecfeff] to-[#e0f2fe] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900">
+      <GlobalHeader
+        showStatus={true}
+        status={getStatus()}
+        statusText={getStatusText()}
+        onSettingsClick={() => setIsSettingsOpen(true)}
+      />
+
+      <main className="max-w-screen-xl mx-auto px-6 py-6">
+        <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
         
         {/* Header Section */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 flex items-center justify-center shadow-lg shadow-cyan-500/20">
               <Film className="w-5 h-5 text-white" />
             </div>
             <div>
               <h1 className="text-2xl font-bold text-slate-800">AI 视频配图</h1>
-              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels 匹配对应素材。</p>
+              <p className="text-sm text-slate-500">根据逐字稿字幕，智能提取关键词并从 Pexels / Pixabay 匹配对应素材。</p>
             </div>
           </div>
         </div>
@@ -79,10 +224,10 @@ export default function VideoMatcherPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
           {/* Input Panel */}
-          <div className="lg:col-span-1 space-y-4">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm flex flex-col h-[calc(100vh-14rem)]">
+          <div className="lg:col-span-1 space-y-4 flex flex-col">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 border border-white/60 shadow-xl shadow-cyan-200/40 flex flex-col h-[calc(100vh-14rem)]">
               <h2 className="text-[15px] font-semibold text-slate-800 mb-3 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" />
                 输入字幕原稿
               </h2>
               <textarea
@@ -101,7 +246,7 @@ export default function VideoMatcherPage() {
                 <button
                   onClick={handleMatch}
                   disabled={isProcessing || !subtitleText.trim()}
-                  className="px-6 py-2.5 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 hover:shadow-lg hover:shadow-blue-500/30 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  className="px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white text-sm font-semibold rounded-xl shadow-md shadow-cyan-500/20 hover:shadow-lg hover:shadow-cyan-500/30 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   {isProcessing ? (
                     <>
@@ -120,18 +265,32 @@ export default function VideoMatcherPage() {
           </div>
 
           {/* Results Panel */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm min-h-[calc(100vh-14rem)] flex flex-col">
+          <div className="lg:col-span-2 flex flex-col">
+            <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-5 border border-white/60 shadow-xl shadow-cyan-200/40 min-h-[calc(100vh-14rem)] flex flex-col">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-[15px] font-semibold text-slate-800 flex items-center gap-2">
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                   匹配结果 
                   {results.length > 0 && (
-                    <span className="bg-indigo-50 text-indigo-600 text-[11px] px-2 py-0.5 rounded-full ml-1">
+                    <span className="bg-cyan-50 text-cyan-600 text-[11px] px-2 py-0.5 rounded-full ml-1">
                       {results.length} 个镜头
                     </span>
                   )}
                 </h2>
+                {results.length > 0 && (
+                  <button
+                    onClick={handleDownloadAll}
+                    disabled={isDownloadingAll || replacingIndex !== null}
+                    className="px-3 py-1.5 bg-white border border-slate-200 hover:border-cyan-300 hover:bg-cyan-50 text-slate-700 hover:text-cyan-600 text-xs font-medium rounded-lg shadow-sm transition-all flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isDownloadingAll ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5" />
+                    )}
+                    打包下载
+                  </button>
+                )}
               </div>
 
               {/* Error Message */}
@@ -163,57 +322,125 @@ export default function VideoMatcherPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {results.map((result, idx) => (
-                      <div key={idx} className="group flex gap-4 p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-200 hover:shadow-md transition-all">
+                      <div key={idx} className="p-4 bg-white border border-slate-200 rounded-xl hover:border-cyan-200 hover:shadow-md transition-all">
                         
-                        {/* Text Content */}
-                        <div className="flex-1 flex flex-col min-w-0">
-                          <div className="mb-auto">
-                            <div className="flex items-center gap-2 mb-1.5">
-                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
-                                #{idx + 1}
-                              </span>
-                              <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full truncate">
-                                关键词: {result.keyword}
-                              </span>
+                        {/* Segment Header */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                            #{idx + 1}
+                          </span>
+                          {editingIndex === idx ? (
+                            <div className="flex items-center gap-1.5 flex-1">
+                              <input
+                                type="text"
+                                value={editKeyword}
+                                onChange={(e) => setEditKeyword(e.target.value)}
+                                className="text-xs font-semibold text-cyan-700 bg-white border border-cyan-300 pl-2 pr-2 py-0.5 rounded-md focus:outline-none focus:ring-2 focus:ring-cyan-500/20 w-[140px] shadow-sm"
+                                placeholder="输入新关键词"
+                                disabled={replacingIndex === idx}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleReplace(idx);
+                                  if (e.key === 'Escape') setEditingIndex(null);
+                                }}
+                                autoFocus
+                              />
+                              <button
+                                onClick={() => handleReplace(idx)}
+                                disabled={replacingIndex === idx}
+                                className="text-xs bg-cyan-500 text-white px-2 py-1 rounded shadow-sm hover:bg-cyan-600 disabled:opacity-70 transition-colors flex items-center"
+                                title="重新检索视频"
+                              >
+                                {replacingIndex === idx ? <Loader2 className="w-3 h-3 animate-spin"/> : <Search className="w-3 h-3" />}
+                              </button>
+                              <button
+                                onClick={() => setEditingIndex(null)}
+                                disabled={replacingIndex === idx}
+                                className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200 hover:bg-slate-200 transition-colors"
+                              >
+                                取消
+                              </button>
                             </div>
-                            <p className="text-sm text-slate-700 leading-relaxed font-medium">
-                              "{result.segment}"
-                            </p>
-                          </div>
+                          ) : (
+                            <button 
+                              onClick={() => {
+                                setEditingIndex(idx);
+                                setEditKeyword(result.keyword);
+                              }}
+                              className="group/keyword text-xs font-semibold text-cyan-600 bg-cyan-50 border border-cyan-100/50 px-2 py-0.5 rounded-md truncate hover:bg-cyan-100 hover:border-cyan-200 transition-all flex items-center gap-1.5 cursor-text"
+                              title="点击修改关键词并重新检索"
+                            >
+                              <span>关键词: {result.keyword}</span>
+                              <Edit2 className="w-3 h-3 opacity-0 group-hover/keyword:opacity-100 transition-opacity" />
+                            </button>
+                          )}
                         </div>
 
-                        {/* Video Thumbnail & Actions */}
-                        <div className="relative w-40 h-24 rounded-lg overflow-hidden bg-slate-100 flex-shrink-0 border border-slate-200 group-hover:border-indigo-200 transition-colors">
-                          <img 
-                            src={result.thumbnail_url} 
-                            alt={result.keyword}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
-                            <a 
-                              href={result.video_url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
-                              title="在新标签页预览"
-                            >
-                              <Play className="w-4 h-4 text-white group-hover/btn:text-indigo-600 ml-0.5" />
-                            </a>
-                            <a 
-                              href={result.video_url} 
-                              download
-                              target="_blank"
-                              className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
-                              title="下载视频"
-                            >
-                              <Download className="w-4 h-4 text-white group-hover/btn:text-indigo-600" />
-                            </a>
-                          </div>
-                          <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-medium text-white flex items-center gap-1">
-                            {result.duration}s
-                          </div>
+                        {/* Subtitle text */}
+                        <p className="text-sm text-slate-700 leading-relaxed font-medium mb-3">
+                          &ldquo;{result.segment}&rdquo;
+                        </p>
+
+                        {/* Candidates Row */}
+                        <div className="flex gap-3 overflow-x-auto pb-1 custom-scrollbar">
+                          {result.candidates.map((cand, cIdx) => {
+                            const isSelected = result.selectedIndex === cIdx;
+                            return (
+                              <div
+                                key={cIdx}
+                                onClick={() => handleSelectCandidate(idx, cIdx)}
+                                className={`group relative flex-shrink-0 w-44 rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                                  isSelected
+                                    ? "border-cyan-500 shadow-md shadow-cyan-200/50 ring-2 ring-cyan-500/20"
+                                    : "border-slate-200 hover:border-cyan-300"
+                                }`}
+                              >
+                                {/* Thumbnail */}
+                                <div className="relative h-28 bg-slate-100">
+                                  <img 
+                                    src={cand.thumbnail_url} 
+                                    alt={result.keyword}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                  />
+                                  {/* Hover overlay */}
+                                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-[2px]">
+                                    <button 
+                                      onClick={(e) => { e.stopPropagation(); setPreviewVideo(cand.video_url); }}
+                                      className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
+                                      title="预览播放"
+                                    >
+                                      <Play className="w-4 h-4 text-white group-hover/btn:text-cyan-600 ml-0.5" />
+                                    </button>
+                                    <a 
+                                      href={cand.video_url} 
+                                      download
+                                      target="_blank"
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="w-8 h-8 rounded-full bg-white/20 hover:bg-white flex items-center justify-center backdrop-blur-md transition-colors group/btn"
+                                      title="下载视频"
+                                    >
+                                      <Download className="w-4 h-4 text-white group-hover/btn:text-cyan-600" />
+                                    </a>
+                                  </div>
+                                  {/* Duration badge */}
+                                  <div className="absolute bottom-1 right-1 px-1.5 py-0.5 bg-black/60 backdrop-blur-md rounded text-[9px] font-medium text-white">
+                                    {cand.duration}s
+                                  </div>
+                                  {/* Selected checkmark */}
+                                  {isSelected && (
+                                    <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-cyan-500 flex items-center justify-center shadow-sm">
+                                      <Check className="w-3 h-3 text-white" />
+                                    </div>
+                                  )}
+                                </div>
+                                {/* Source badge */}
+                                <div className={`px-2 py-1 text-[10px] font-bold uppercase text-center border-t ${sourceBadgeColor(cand.source)}`}>
+                                  {cand.source}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -224,7 +451,36 @@ export default function VideoMatcherPage() {
           </div>
           
         </div>
-      </div>
+        </div>
+      </main>
+
+      {/* Video Preview Modal */}
+      {previewVideo && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/80 backdrop-blur-sm p-4 animate-in fade-in duration-200" 
+          onClick={() => setPreviewVideo(null)}
+        >
+          <div 
+            className="relative w-full max-w-4xl aspect-[16/9] bg-black rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/20 flex flex-col items-center justify-center"
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setPreviewVideo(null)}
+              className="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center rounded-full bg-black/50 hover:bg-black/80 text-white transition-colors"
+            >
+              ×
+            </button>
+            <video 
+              src={previewVideo} 
+              controls 
+              autoPlay 
+              className="w-full h-full"
+            />
+          </div>
+        </div>
+      )}
+
+      <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }
