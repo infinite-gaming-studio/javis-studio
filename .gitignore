@@ -119,3 +119,5 @@ yarn-error.log*
 /docs/.vitepress/cache/
 /docs/node_modules/
 node_modules
+.backend.pid
+.frontend.pid
