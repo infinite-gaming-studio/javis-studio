@@ -104,7 +104,7 @@ async def extract_keywords(
         model=llm_model or "gpt-3.5-turbo",
         messages=messages,
         temperature=0.7,
-        max_tokens=1024,
+        max_tokens=4096,
     )
     raw = resp.choices[0].message.content or "[]"
     
@@ -131,29 +131,30 @@ async def extract_keywords(
 async def search_pexels_video(
     keyword: str,
     pexels_key: str,
-) -> Optional[VideoCandidate]:
+    max_results: int = 3,
+) -> List[VideoCandidate]:
     if not pexels_key:
-        return None
-        
-    url = f"https://api.pexels.com/videos/search?query={keyword}&per_page=1&orientation=landscape"
+        return []
+
+    url = f"https://api.pexels.com/videos/search?query={keyword}&per_page={max_results}&orientation=landscape"
     headers = {"Authorization": pexels_key}
-    
+
+    candidates = []
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             videos = data.get("videos", [])
-            if videos:
-                video = videos[0]
+            for video in videos:
                 video_files = video.get("video_files", [])
                 hd_files = [f for f in video_files if f.get("quality") in ("hd", "uhd")]
                 best_file = hd_files[0] if hd_files else (video_files[0] if video_files else None)
                 if not best_file:
-                    return None
-                    
+                    continue
+
                 video_id = video.get("id", 0)
-                return VideoCandidate(
+                candidates.append(VideoCandidate(
                     source="pexels",
                     video_id=video_id,
                     video_url=best_file.get("link", ""),
@@ -162,23 +163,25 @@ async def search_pexels_video(
                     width=best_file.get("width", 0),
                     height=best_file.get("height", 0),
                     source_url=f"https://www.pexels.com/video/{video_id}/",
-                )
+                ))
         except Exception as e:
             logger.error(f"Pexels API error for keyword '{keyword}': {e}")
-    return None
+    return candidates
 
 # ─── Pixabay ───────────────────────────────────────────────────────────────────
 
 async def search_pixabay_video(
     keyword: str,
     pixabay_key: str,
-) -> Optional[VideoCandidate]:
+    max_results: int = 3,
+) -> List[VideoCandidate]:
     if not pixabay_key:
-        return None
-    
+        return []
+
     encoded_kw = quote_plus(keyword)
-    url = f"https://pixabay.com/api/videos/?key={pixabay_key}&q={encoded_kw}&per_page=3"
-    
+    url = f"https://pixabay.com/api/videos/?key={pixabay_key}&q={encoded_kw}&per_page={max_results}"
+
+    candidates = []
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, timeout=10)
@@ -186,8 +189,7 @@ async def search_pixabay_video(
             data = resp.json()
             hits = data.get("hits", [])
             logger.info(f"Pixabay search '{keyword}': {len(hits)} hits")
-            if hits:
-                video = hits[0]
+            for video in hits:
                 videos_dict = video.get("videos", {})
                 # Prefer large > medium > small, but skip entries with empty URL
                 best = None
@@ -196,11 +198,11 @@ async def search_pixabay_video(
                     if entry.get("url"):
                         best = entry
                         break
-                
+
                 if not best:
-                    logger.warning(f"Pixabay: no valid video URL found for '{keyword}'")
-                    return None
-                    
+                    logger.warning(f"Pixabay: no valid video URL found for video id {video.get('id', 0)}")
+                    continue
+
                 # Pixabay thumbnail: use the thumbnail from medium or small
                 thumb = ""
                 for q in ("medium", "small", "tiny"):
@@ -208,9 +210,9 @@ async def search_pixabay_video(
                     if t:
                         thumb = t
                         break
-                
+
                 video_id = video.get("id", 0)
-                return VideoCandidate(
+                candidates.append(VideoCandidate(
                     source="pixabay",
                     video_id=video_id,
                     video_url=best.get("url", ""),
@@ -219,38 +221,37 @@ async def search_pixabay_video(
                     width=best.get("width", 0),
                     height=best.get("height", 0),
                     source_url=f"https://pixabay.com/videos/id-{video_id}/",
-                )
-            else:
-                logger.info(f"Pixabay: no hits for '{keyword}'")
+                ))
         except Exception as e:
             logger.error(f"Pixabay API error for keyword '{keyword}': {e}")
-    return None
+    return candidates
 
 # ─── Pexels Photos ───────────────────────────────────────────────────────────
 
 async def search_pexels_photo(
     keyword: str,
     pexels_key: str,
-) -> Optional[MediaCandidate]:
+    max_results: int = 3,
+) -> List[MediaCandidate]:
     if not pexels_key:
-        return None
-        
-    url = f"https://api.pexels.com/v1/search?query={keyword}&per_page=1&orientation=landscape"
+        return []
+
+    url = f"https://api.pexels.com/v1/search?query={keyword}&per_page={max_results}&orientation=landscape"
     headers = {"Authorization": pexels_key}
-    
+
+    candidates = []
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
             data = resp.json()
             photos = data.get("photos", [])
-            if photos:
-                photo = photos[0]
+            for photo in photos:
                 src = photo.get("src", {})
                 # Prefer landscape or large size
                 photo_url = src.get("landscape") or src.get("large") or src.get("original", "")
                 photo_id = photo.get("id", 0)
-                return MediaCandidate(
+                candidates.append(MediaCandidate(
                     source="pexels",
                     media_type="photo",
                     media_id=str(photo_id),
@@ -260,23 +261,25 @@ async def search_pexels_photo(
                     duration=0,
                     width=photo.get("width", 0),
                     height=photo.get("height", 0),
-                )
+                ))
         except Exception as e:
             logger.error(f"Pexels photo API error for keyword '{keyword}': {e}")
-    return None
+    return candidates
 
 # ─── Pixabay Photos ──────────────────────────────────────────────────────────
 
 async def search_pixabay_photo(
     keyword: str,
     pixabay_key: str,
-) -> Optional[MediaCandidate]:
+    max_results: int = 3,
+) -> List[MediaCandidate]:
     if not pixabay_key:
-        return None
+        return []
 
     encoded_kw = quote_plus(keyword)
-    url = f"https://pixabay.com/api/?key={pixabay_key}&q={encoded_kw}&per_page=3&image_type=photo&orientation=horizontal"
+    url = f"https://pixabay.com/api/?key={pixabay_key}&q={encoded_kw}&per_page={max_results}&image_type=photo&orientation=horizontal"
 
+    candidates = []
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, timeout=10)
@@ -284,10 +287,9 @@ async def search_pixabay_photo(
             data = resp.json()
             hits = data.get("hits", [])
             logger.info(f"Pixabay photo search '{keyword}': {len(hits)} hits")
-            if hits:
-                photo = hits[0]
+            for photo in hits:
                 photo_id = photo.get("id", 0)
-                return MediaCandidate(
+                candidates.append(MediaCandidate(
                     source="pixabay",
                     media_type="photo",
                     media_id=str(photo_id),
@@ -297,27 +299,27 @@ async def search_pixabay_photo(
                     duration=0,
                     width=photo.get("imageWidth", 0),
                     height=photo.get("imageHeight", 0),
-                )
-            else:
-                logger.info(f"Pixabay photo: no hits for '{keyword}'")
+                ))
         except Exception as e:
             logger.error(f"Pixabay photo API error for keyword '{keyword}': {e}")
-    return None
+    return candidates
 
 # ─── Unsplash Photos ─────────────────────────────────────────────────────────
 
 async def search_unsplash_photo(
     keyword: str,
     unsplash_key: str,
-) -> Optional[MediaCandidate]:
+    max_results: int = 3,
+) -> List[MediaCandidate]:
     """Search Unsplash photos using Unsplash API."""
     if not unsplash_key:
-        return None
+        return []
 
     encoded_kw = quote_plus(keyword)
-    url = f"https://api.unsplash.com/search/photos?query={encoded_kw}&per_page=1&orientation=landscape"
+    url = f"https://api.unsplash.com/search/photos?query={encoded_kw}&per_page={max_results}&orientation=landscape"
     headers = {"Authorization": f"Client-ID {unsplash_key}"}
 
+    candidates = []
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, headers=headers, timeout=10)
@@ -325,8 +327,7 @@ async def search_unsplash_photo(
             data = resp.json()
             results = data.get("results", [])
             logger.info(f"Unsplash photo search '{keyword}': {len(results)} results")
-            if results:
-                photo = results[0]
+            for photo in results:
                 photo_id = photo.get("id", "")
                 urls = photo.get("urls", {})
                 # Prefer regular size for media_url, small for thumbnail
@@ -335,7 +336,7 @@ async def search_unsplash_photo(
                 width = photo.get("width", 0)
                 height = photo.get("height", 0)
 
-                return MediaCandidate(
+                candidates.append(MediaCandidate(
                     source="unsplash",
                     media_type="photo",
                     media_id=str(photo_id),
@@ -345,9 +346,7 @@ async def search_unsplash_photo(
                     duration=0,
                     width=width,
                     height=height,
-                )
-            else:
-                logger.info(f"Unsplash: no results for '{keyword}'")
+                ))
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 logger.error(f"Unsplash API error for keyword '{keyword}': Rate limit exceeded or invalid Access Key")
@@ -355,7 +354,7 @@ async def search_unsplash_photo(
                 logger.error(f"Unsplash API error for keyword '{keyword}': {e}")
         except Exception as e:
             logger.error(f"Unsplash API error for keyword '{keyword}': {e}")
-    return None
+    return candidates
 
 # ─── Video to MediaCandidate converters ──────────────────────────────────────
 
@@ -377,11 +376,12 @@ def video_to_media_candidate(video: VideoCandidate) -> MediaCandidate:
 async def search_youtube_video(
     keyword: str,
     youtube_key: str,
-) -> Optional[MediaCandidate]:
+    max_results: int = 3,
+) -> List[MediaCandidate]:
     """Search YouTube videos using YouTube Data API v3."""
     if not youtube_key:
-        return None
-    
+        return []
+
     # YouTube Data API v3 search endpoint
     # Using videoEmbeddable=true to ensure videos can be embedded
     # Using videoLicense=creativeCommon to only return CC-licensed videos (remix-friendly)
@@ -392,53 +392,54 @@ async def search_youtube_video(
         f"&type=video"
         f"&videoEmbeddable=true"
         f"&videoLicense=creativeCommon"
-        f"&maxResults=1"
+        f"&maxResults={max_results}"
         f"&key={youtube_key}"
     )
-    
+
+    candidates = []
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(url, timeout=10)
             resp.raise_for_status()
             data = resp.json()
-            
+
             items = data.get("items", [])
             if not items:
                 logger.info(f"YouTube: no results for '{keyword}'")
-                return None
-            
-            video = items[0]
-            snippet = video.get("snippet", {})
-            video_id = video.get("id", {}).get("videoId", "")
-            
-            if not video_id:
-                return None
-            
-            # Get thumbnail (prefer high quality)
-            thumbnails = snippet.get("thumbnails", {})
-            thumbnail_url = (
-                thumbnails.get("high", {}).get("url", "")
-                or thumbnails.get("medium", {}).get("url", "")
-                or thumbnails.get("default", {}).get("url", "")
-            )
-            
-            # Construct YouTube embed URL (for preview) and watch URL
-            # Using embed URL as media_url since it's more useful for preview
-            embed_url = f"https://www.youtube.com/embed/{video_id}"
-            watch_url = f"https://www.youtube.com/watch?v={video_id}"
-            
-            return MediaCandidate(
-                source="youtube",
-                media_type="video",
-                media_url=embed_url,  # Embed URL for preview
-                source_url=watch_url,  # Original YouTube page for attribution
-                media_id=video_id,
-                thumbnail_url=thumbnail_url,
-                duration=0,  # YouTube search API doesn't return duration, would need additional call
-                width=0,     # Not provided by search API
-                height=0,    # Not provided by search API
-            )
-            
+                return []
+
+            for video in items:
+                snippet = video.get("snippet", {})
+                video_id = video.get("id", {}).get("videoId", "")
+
+                if not video_id:
+                    continue
+
+                # Get thumbnail (prefer high quality)
+                thumbnails = snippet.get("thumbnails", {})
+                thumbnail_url = (
+                    thumbnails.get("high", {}).get("url", "")
+                    or thumbnails.get("medium", {}).get("url", "")
+                    or thumbnails.get("default", {}).get("url", "")
+                )
+
+                # Construct YouTube embed URL (for preview) and watch URL
+                # Using embed URL as media_url since it's more useful for preview
+                embed_url = f"https://www.youtube.com/embed/{video_id}"
+                watch_url = f"https://www.youtube.com/watch?v={video_id}"
+
+                candidates.append(MediaCandidate(
+                    source="youtube",
+                    media_type="video",
+                    media_url=embed_url,  # Embed URL for preview
+                    source_url=watch_url,  # Original YouTube page for attribution
+                    media_id=video_id,
+                    thumbnail_url=thumbnail_url,
+                    duration=0,  # YouTube search API doesn't return duration, would need additional call
+                    width=0,     # Not provided by search API
+                    height=0,    # Not provided by search API
+                ))
+
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 403:
                 logger.error(f"YouTube API error for keyword '{keyword}': Quota exceeded or invalid API key")
@@ -446,8 +447,8 @@ async def search_youtube_video(
                 logger.error(f"YouTube API error for keyword '{keyword}': {e}")
         except Exception as e:
             logger.error(f"YouTube API error for keyword '{keyword}': {e}")
-    
-    return None
+
+    return candidates
 
 # ─── Combined search ──────────────────────────────────────────────────────────
 
@@ -458,42 +459,40 @@ async def search_all_sources(
     youtube_key: str = "",
     unsplash_key: str = "",
     media_type: MediaType = "video",
+    max_per_source: int = 3,
 ) -> List[MediaCandidate]:
     """Search Pexels, Pixabay, YouTube, and Unsplash concurrently and return all found candidates."""
     tasks = []
     if media_type == "video":
         if pexels_key:
-            tasks.append(search_pexels_video(keyword, pexels_key))
+            tasks.append(search_pexels_video(keyword, pexels_key, max_per_source))
         if pixabay_key:
-            tasks.append(search_pixabay_video(keyword, pixabay_key))
+            tasks.append(search_pixabay_video(keyword, pixabay_key, max_per_source))
         if youtube_key:
-            tasks.append(search_youtube_video(keyword, youtube_key))
+            tasks.append(search_youtube_video(keyword, youtube_key, max_per_source))
         # Unsplash doesn't support videos
     else:  # photo
         if pexels_key:
-            tasks.append(search_pexels_photo(keyword, pexels_key))
+            tasks.append(search_pexels_photo(keyword, pexels_key, max_per_source))
         if pixabay_key:
-            tasks.append(search_pixabay_photo(keyword, pixabay_key))
+            tasks.append(search_pixabay_photo(keyword, pixabay_key, max_per_source))
         if unsplash_key:
-            tasks.append(search_unsplash_photo(keyword, unsplash_key))
+            tasks.append(search_unsplash_photo(keyword, unsplash_key, max_per_source))
         # YouTube doesn't support photos
 
     if not tasks:
         return []
 
     results = await asyncio.gather(*tasks)
-    if media_type == "video":
-        # Convert VideoCandidate to MediaCandidate for pexels/pixabay
-        candidates = []
-        for r in results:
-            if r is not None:
-                if isinstance(r, VideoCandidate):
-                    candidates.append(video_to_media_candidate(r))
-                else:
-                    candidates.append(r)  # Already MediaCandidate (from YouTube)
-        return candidates
-    else:
-        return [r for r in results if r is not None]
+    # Each result is now a List[VideoCandidate] or List[MediaCandidate]
+    candidates = []
+    for source_results in results:
+        for r in source_results:
+            if isinstance(r, VideoCandidate):
+                candidates.append(video_to_media_candidate(r))
+            else:
+                candidates.append(r)  # Already MediaCandidate
+    return candidates
 
 async def match_videos(
     text: str,
