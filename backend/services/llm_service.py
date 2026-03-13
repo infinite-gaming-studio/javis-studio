@@ -3,8 +3,6 @@ import logging
 from typing import Optional
 
 from openai import AsyncOpenAI
-import google.genai as genai
-from google.genai import types
 
 from config import get_settings
 from models.schemas import ScriptSegment
@@ -92,6 +90,8 @@ async def generate_script_gemini(
     """Generate narration script using Google Gemini."""
     import base64
     import httpx
+    import google.genai as genai
+    from google.genai import types
 
     # Initialize the new SDK client
     client = genai.Client(api_key=settings.gemini_api_key)

@@ -5,7 +5,7 @@
 
 set -e
 
-PROJECT_ROOT="/Users/nvozi/Coding/ai-based-projects/javis-studio"
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/backend"
 FRONTEND_DIR="$PROJECT_ROOT/frontend"
 BACKEND_PORT=8000

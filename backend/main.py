@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config import get_settings
-from routers import studio, pdf, video_matcher
+from routers import studio, pdf, video_matcher, video_matcher_workflow
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +47,7 @@ app.add_middleware(
 app.include_router(studio.router)
 app.include_router(pdf.router)
 app.include_router(video_matcher.router)
+app.include_router(video_matcher_workflow.router)
 
 
 @app.get("/health")

@@ -3,7 +3,7 @@
 # Javis Studio 停止服务脚本
 # 用法: ./stop.sh
 
-PROJECT_ROOT="/Users/nvozi/Coding/ai-based-projects/javis-studio"
+PROJECT_ROOT="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_PORT=8000
 FRONTEND_PORT=3000
 
