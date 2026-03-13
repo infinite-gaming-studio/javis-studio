@@ -1,13 +1,12 @@
 """
 YouTube download service using yt-dlp.
-Reference: VideoLingo project (https://github.com/Huanshere/VideoLingo)
+Simplified version without cookies - uses basic yt-dlp configuration.
 """
 import os
 import sys
 import re
 import subprocess
 import logging
-import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
 
@@ -15,84 +14,63 @@ logger = logging.getLogger(__name__)
 
 
 def update_ytdlp() -> bool:
-    """Update yt-dlp to the latest version."""
+    """
+    Update yt-dlp to the latest version.
+    Returns True if update was successful or not needed, False on error.
+    """
     try:
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "--upgrade", "yt-dlp"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=60
-        )
-        # Clear cached module if exists
-        if 'yt_dlp' in sys.modules:
-            del sys.modules['yt_dlp']
-        logger.info("yt-dlp updated successfully")
-        return True
-    except subprocess.CalledProcessError as e:
-        logger.warning(f"Failed to update yt-dlp: {e}")
-        return False
-    except Exception as e:
-        logger.warning(f"Error updating yt-dlp: {e}")
-        return False
-
-
-def get_ytdlp_version() -> Optional[str]:
-    """Get current yt-dlp version."""
-    try:
+        logger.info("Checking for yt-dlp updates...")
         result = subprocess.run(
-            [sys.executable, "-m", "yt_dlp", "--version"],
+            [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=60
         )
         if result.returncode == 0:
-            return result.stdout.strip()
+            logger.info("yt-dlp is up to date")
+            return True
+        else:
+            logger.warning(f"yt-dlp update returned non-zero: {result.stderr}")
+            return False
+    except subprocess.TimeoutExpired:
+        logger.warning("yt-dlp update timed out")
+        return False
     except Exception as e:
-        logger.debug(f"Could not get yt-dlp version: {e}")
+        logger.error(f"Failed to update yt-dlp: {e}")
+        return False
+
+
+def get_cookies_path() -> Optional[str]:
+    """
+    Get the path to YouTube cookies file if configured.
+    Checks environment variable YOUTUBE_COOKIES_PATH.
+    """
+    cookies_path = os.environ.get("YOUTUBE_COOKIES_PATH")
+    if cookies_path and os.path.exists(cookies_path):
+        logger.info(f"Using YouTube cookies from: {cookies_path}")
+        return cookies_path
+    
+    # Also check for cookies.txt in common locations
+    possible_paths = [
+        "cookies.txt",
+        "youtube_cookies.txt",
+        "/app/cookies.txt",
+        "/tmp/cookies.txt",
+    ]
+    
+    for path in possible_paths:
+        if os.path.exists(path):
+            logger.info(f"Found cookies file: {path}")
+            return path
+    
     return None
 
 
 def sanitize_filename(filename: str) -> str:
     """Remove or replace illegal characters in filename."""
-    # Remove illegal characters
     filename = re.sub(r'[<>:"/\\|?*]', '', filename)
-    # Ensure filename doesn't start or end with dot or space
     filename = filename.strip('. ')
-    # Use default name if empty
     return filename if filename else 'video'
-
-
-def get_cookies_path() -> Optional[str]:
-    """Get YouTube cookies file path from config."""
-    # Check config settings first
-    try:
-        from config import get_settings
-        settings = get_settings()
-        if settings.youtube_cookies_path and os.path.exists(settings.youtube_cookies_path):
-            return settings.youtube_cookies_path
-    except Exception:
-        pass
-    
-    # Check environment variable
-    cookies_path = os.getenv("YOUTUBE_COOKIES_PATH", "")
-    if cookies_path and os.path.exists(cookies_path):
-        return cookies_path
-    
-    # Check common locations
-    possible_paths = [
-        Path.home() / ".config" / "javis-studio" / "cookies.txt",
-        Path.home() / ".javis-studio" / "cookies.txt",
-        Path("/app/config/cookies.txt"),  # Docker common path
-        Path("/app/cookies.txt"),  # Docker alternative
-        Path("cookies.txt"),  # Current directory
-    ]
-    
-    for path in possible_paths:
-        if path.exists():
-            logger.info(f"Found cookies file at: {path}")
-            return str(path)
-    
-    return None
 
 
 class YTDLPError(Exception):
@@ -111,35 +89,17 @@ def download_video(
 ) -> str:
     """
     Download a YouTube video using yt-dlp Python API.
-    
-    Args:
-        video_id: YouTube video ID
-        output_dir: Directory to save the video
-        resolution: Target resolution (e.g., "1080", "720", "best")
-        progress_hook: Optional callback for download progress
-    
-    Returns:
-        Path to the downloaded file
-    
-    Raises:
-        YTDLPError: If download fails
+    Supports cookies if YOUTUBE_COOKIES_PATH is set.
     """
     youtube_url = f"https://www.youtube.com/watch?v={video_id}"
     
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
     
-    # Build format string
-    if resolution == "best":
-        format_str = "bestvideo+bestaudio/best"
-    else:
-        try:
-            res_num = int(resolution)
-            format_str = f"bestvideo[height<={res_num}][ext=mp4]+bestaudio[ext=m4a]/best[height<={res_num}]/best"
-        except ValueError:
-            format_str = "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/best"
+    # Simple format string - just use best available format
+    format_str = "best/bestvideo+bestaudio"
     
-    # Configure yt-dlp options
+    # Basic yt-dlp options - minimal configuration for reliability
     ydl_opts: Dict[str, Any] = {
         "format": format_str,
         "outtmpl": os.path.join(output_dir, "%(title)s_%(id)s.%(ext)s"),
@@ -147,35 +107,29 @@ def download_video(
         "quiet": True,
         "no_warnings": True,
         "merge_output_format": "mp4",
-        "retries": 5,
-        "fragment_retries": 5,
-        "skip_unavailable_fragments": True,
-        "no_cache_dir": True,
-        # Anti-detection options
-        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-        "extractor_args": {
-            "youtube": {
-                "player_client": ["web"],
-                "player_skip": ["webpage", "configs", "js"],
-            }
+        "retries": 3,
+        "fragment_retries": 3,
+        "file_access_retries": 3,
+        # Add some headers to appear more like a browser
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
         },
     }
     
     # Add cookies if available
     cookies_path = get_cookies_path()
     if cookies_path:
-        logger.info(f"Using cookies from: {cookies_path}")
         ydl_opts["cookiefile"] = cookies_path
-    else:
-        # Try to extract cookies from browser as fallback
-        ydl_opts["cookiesfrombrowser"] = ("chrome",)  # tuple format for yt-dlp
+        logger.info(f"Using cookies file: {cookies_path}")
     
     # Add progress hook if provided
     if progress_hook:
         ydl_opts["progress_hooks"] = [progress_hook]
     
     try:
-        # Import yt-dlp (may need to update first)
+        # Import yt-dlp
         try:
             from yt_dlp import YoutubeDL
         except ImportError:
@@ -230,7 +184,7 @@ def download_video(
         # Classify errors
         if "Sign in to confirm" in error_msg or "not a bot" in error_msg:
             raise YTDLPError(
-                "YouTube detected automated access. Please use cookies from a logged-in browser.",
+                "YouTube is blocking this download. Please try a different video.",
                 "bot_detection"
             )
         elif "Video unavailable" in error_msg or "removed" in error_msg:
@@ -241,6 +195,8 @@ def download_video(
             raise YTDLPError("Video blocked due to copyright", "copyright")
         elif "age-restricted" in error_msg.lower():
             raise YTDLPError("Video is age-restricted", "age_restricted")
+        elif "Requested format is not available" in error_msg:
+            raise YTDLPError("This video format is not available. Try another video.", "format_unavailable")
         elif "network" in error_msg.lower() or "connection" in error_msg.lower():
             raise YTDLPError("Network connection error", "network")
         elif "No video formats found" in error_msg:
@@ -252,12 +208,6 @@ def download_video(
 def get_video_info(video_id: str) -> Dict[str, Any]:
     """
     Get video information without downloading.
-    
-    Args:
-        video_id: YouTube video ID
-    
-    Returns:
-        Dictionary with video info
     """
     youtube_url = f"https://www.youtube.com/watch?v={video_id}"
     

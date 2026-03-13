@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import JSZip from "jszip";
 import { Download, Film, Image, Loader2, Play, Edit2, Search, Check, Folder, Save, Trash2, Plus, ChevronDown, FolderOpen } from "lucide-react";
 import { getSettings } from "@/lib/api";
 import GlobalHeader from "@/components/GlobalHeader";
@@ -364,131 +363,73 @@ export default function VideoMatcherPage() {
   const handleDownloadAll = async () => {
     if (results.length === 0) return;
     setIsDownloadingAll(true);
-    
-    // Track failed downloads for reporting
-    const failedDownloads: Array<{ index: number; keyword: string; source: string; reason: string }> = [];
-    const youtubeVideos: Array<{ index: number; keyword: string; videoId: string; sourceUrl: string }> = [];
-    
+
     try {
-      const zip = new JSZip();
-      let readmeText = `# ${projectName}\n\n`;
-      readmeText += `导出时间: ${new Date().toLocaleString("zh-CN")}\n\n`;
-      readmeText += "## 配图说明文档\n\n";
+      // Prepare items for backend
+      const items = results.map((result, idx) => {
+        const selected = result.candidates[result.selectedIndex];
+        return {
+          index: idx + 1,
+          segment: result.segment,
+          keyword: result.keyword,
+          source: selected?.source || "unknown",
+          media_type: selected?.media_type || "video",
+          media_url: selected?.media_url || "",
+          source_url: selected?.source_url || "",
+          media_id: selected?.media_id || "",
+        };
+      }).filter(item => item.media_url); // Only include items with media_url
 
-      for (let i = 0; i < results.length; i++) {
-        const seg = results[i];
-        const selected = seg.candidates[seg.selectedIndex];
-        if (!selected) continue;
-        
-        const isVideo = selected.media_type === "video";
-        const ext = isVideo ? "mp4" : "jpg";
-        const filename = `${String(i + 1).padStart(2, '0')}_${seg.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.${ext}`;
-        
-        readmeText += `### 镜头 ${i + 1}\n`;
-        readmeText += `- **解说文案**: ${seg.segment}\n`;
-        readmeText += `- **搜索关键词**: ${seg.keyword}\n`;
-        readmeText += `- **素材类型**: ${isVideo ? "视频" : "图片"}\n`;
-        readmeText += `- **素材来源**: ${selected.source}\n`;
-        readmeText += `- **文件**: ${filename}\n`;
-        readmeText += `- **原素材链接**: ${selected.source_url || selected.media_url}\n\n`;
-
-        // YouTube videos cannot be directly downloaded via fetch (CORS + embed URL)
-        if (selected.source === "youtube") {
-          youtubeVideos.push({
-            index: i + 1,
-            keyword: seg.keyword,
-            videoId: selected.media_id,
-            sourceUrl: selected.source_url || `https://www.youtube.com/watch?v=${selected.media_id}`,
-          });
-          continue;
-        }
-
-        // Try to download Pexels/Pixabay media
-        try {
-          const mediaRes = await fetch(selected.media_url, {
-            // Add mode cors for cross-origin requests
-            mode: "cors",
-          });
-          
-          if (!mediaRes.ok) {
-            throw new Error(`HTTP ${mediaRes.status}: ${mediaRes.statusText}`);
-          }
-          
-          const mediaBlob = await mediaRes.blob();
-          
-          // Validate blob is not empty
-          if (mediaBlob.size === 0) {
-            throw new Error("下载的文件为空");
-          }
-          
-          zip.file(filename, mediaBlob);
-        } catch (downloadError: any) {
-          console.error(`Failed to download media for segment ${i + 1}:`, downloadError);
-          failedDownloads.push({
-            index: i + 1,
-            keyword: seg.keyword,
-            source: selected.source,
-            reason: downloadError.message || "网络请求失败",
-          });
-        }
+      if (items.length === 0) {
+        alert("没有可下载的素材");
+        setIsDownloadingAll(false);
+        return;
       }
 
-      // Add YouTube section to README if there are YouTube videos
-      if (youtubeVideos.length > 0) {
-        readmeText += "---\n\n";
-        readmeText += "## ⚠️ YouTube 视频下载说明\n\n";
-        readmeText += "以下视频来自 YouTube，由于版权和跨域限制，无法自动打包下载。\n";
-        readmeText += "请使用 yt-dlp 或其他工具手动下载：\n\n";
-        readmeText += "```bash\n";
-        readmeText += "# 安装 yt-dlp\n";
-        readmeText += "pip install yt-dlp\n\n";
-        for (const yt of youtubeVideos) {
-          readmeText += `# 镜头 ${yt.index} - ${yt.keyword}\n`;
-          readmeText += `yt-dlp "${yt.sourceUrl}" -o "${String(yt.index).padStart(2, '0')}_${yt.keyword.replace(/[^a-zA-Z0-9]/g, '_')}.mp4"\n\n`;
-        }
-        readmeText += "```\n\n";
-        readmeText += "或者在页面上点击每个 YouTube 视频的「下载视频」按钮单独下载。\n\n";
+      // Call backend API for batch download
+      const response = await fetch("/api/v1/tools/video-matcher/download/batch", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          project_name: projectName,
+          items: items,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.detail || `下载失败: HTTP ${response.status}`);
       }
 
-      // Add failed downloads section to README
-      if (failedDownloads.length > 0) {
-        readmeText += "---\n\n";
-        readmeText += "## ❌ 下载失败的素材\n\n";
-        readmeText += "以下素材下载失败，请手动下载：\n\n";
-        for (const failed of failedDownloads) {
-          readmeText += `- **镜头 ${failed.index}** (${failed.source} - ${failed.keyword}): ${failed.reason}\n`;
-        }
-        readmeText += "\n";
+      // Get the ZIP blob
+      const blob = await response.blob();
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get("content-disposition");
+      let filename = `${sanitizeFilename(projectName) || "media_package"}.zip`;
+      if (contentDisposition) {
+        const match = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (match) filename = match[1];
       }
 
-      zip.file("README.md", readmeText);
-
-      const content = await zip.generateAsync({ type: "blob" });
-      const url = URL.createObjectURL(content);
+      // Trigger download
+      const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      // Use project name for the zip file
-      const sanitizedName = sanitizeFilename(projectName) || "media_matches";
-      a.download = `${sanitizedName}.zip`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      // Show summary alert if there were issues
-      if (youtubeVideos.length > 0 || failedDownloads.length > 0) {
-        const messages: string[] = [];
-        if (youtubeVideos.length > 0) {
-          messages.push(`${youtubeVideos.length} 个 YouTube 视频需单独下载`);
-        }
-        if (failedDownloads.length > 0) {
-          messages.push(`${failedDownloads.length} 个素材下载失败`);
-        }
-        alert(`打包完成！\n\n${messages.join("，")}。\n详情请查看 README.md`);
-      }
-    } catch (error) {
-      alert("打包下载失败，请检查网络或重试");
-      console.error(error);
+      // Show success message (backend includes README with details)
+      alert(`打包下载成功！\n\nZIP文件: ${filename}\n大小: ${(blob.size / 1024 / 1024).toFixed(2)} MB\n\n请查看 README.md 了解下载详情。`);
+
+    } catch (error: any) {
+      console.error("Batch download error:", error);
+      alert(`打包下载失败: ${error.message || "未知错误"}\n\n请检查网络连接后重试。`);
     } finally {
       setIsDownloadingAll(false);
     }
@@ -1041,14 +982,6 @@ export default function VideoMatcherPage() {
                                 <div className={`px-2 py-1 text-[10px] font-bold uppercase text-center border-t ${sourceBadgeColor(cand.source)}`}>
                                   {cand.source}
                                 </div>
-                                {/* YouTube warning tooltip */}
-                                {cand.source === "youtube" && (
-                                  <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/70 backdrop-blur-sm">
-                                    <span className="text-[9px] text-white text-center px-2">
-                                      ⚠️ YouTube下载可能受限<br/>建议优先使用Pexels/Pixabay
-                                    </span>
-                                  </div>
-                                )}
                               </div>
                             );
                           })}

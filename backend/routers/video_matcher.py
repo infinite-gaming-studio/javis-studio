@@ -1,11 +1,13 @@
 from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 import logging
 import os
+import re
 import tempfile
 import subprocess
+from urllib.parse import quote
 from config import get_settings
 
 from services.video_matcher import (
@@ -187,6 +189,90 @@ async def video_search_api(
     except Exception as e:
         logger.error(f"Error searching {req.media_type} for keyword {req.keyword}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class BatchDownloadRequest(BaseModel):
+    """Request for batch media download and packaging."""
+    project_name: str
+    items: List[Dict[str, Any]]
+
+
+@router.post("/video-matcher/download/batch")
+async def batch_download_media(req: BatchDownloadRequest):
+    """
+    Download multiple media files and package them into a ZIP archive.
+    Returns the ZIP file as a streaming response.
+    """
+    from services.download_packager import MediaItem, create_media_package
+    import asyncio
+    
+    if not req.items:
+        raise HTTPException(status_code=400, detail="No items to download")
+    
+    try:
+        # Convert request items to MediaItem objects
+        media_items = []
+        for i, item_data in enumerate(req.items, 1):
+            media_items.append(MediaItem(
+                index=item_data.get("index", i),
+                segment=item_data.get("segment", ""),
+                keyword=item_data.get("keyword", ""),
+                source=item_data.get("source", ""),
+                media_type=item_data.get("media_type", "video"),
+                media_url=item_data.get("media_url", ""),
+                source_url=item_data.get("source_url", ""),
+                media_id=str(item_data.get("media_id", ""))
+            ))
+        
+        logger.info(f"Batch download requested for {len(media_items)} items")
+        
+        # Create the package
+        zip_bytes, summary = await create_media_package(
+            project_name=req.project_name,
+            items=media_items,
+            max_concurrent=5,
+            timeout=60.0
+        )
+        
+        if summary["successful_downloads"] == 0:
+            raise HTTPException(
+                status_code=500,
+                detail="所有素材下载失败，请检查网络连接或重试"
+            )
+        
+        # Sanitize project name for filename - use ASCII only for compatibility
+        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', req.project_name).strip('_')[:50]
+        if not safe_name:
+            safe_name = "media_package"
+
+        filename = f"{safe_name}.zip"
+
+        # Encode filename for Content-Disposition header (RFC 5987)
+        # Use both filename (ASCII) and filename* (UTF-8) for compatibility
+        encoded_filename = quote(req.project_name, safe='')
+        content_disposition = f'attachment; filename="{filename}"; filename*=UTF-8\'{encoded_filename}.zip'
+
+        # Return as streaming response
+        def iterfile():
+            yield zip_bytes
+
+        logger.info(f"Returning ZIP package: {filename} ({len(zip_bytes)} bytes)")
+
+        return StreamingResponse(
+            iterfile(),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": content_disposition,
+                "Content-Length": str(len(zip_bytes)),
+                "X-Download-Summary": str(summary).replace("'", '"')
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in batch download: {e}")
+        raise HTTPException(status_code=500, detail=f"打包下载失败: {str(e)[:200]}")
 
 
 @router.get("/video-matcher/download/youtube/{video_id}")
