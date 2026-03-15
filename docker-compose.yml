@@ -6,15 +6,13 @@ services:
       context: ./backend
       dockerfile: Dockerfile.backend
     ports:
-      - "8000:8000"
+      - "18000:8000"
     volumes:
       - ./backend:/app
       - ./storage:/app/storage
       - ./.env:/app/.env
     environment:
       - STORAGE_DIR=/app/storage
-    depends_on:
-      - frontend
 
   frontend:
     image: node:20-alpine
@@ -22,8 +20,11 @@ services:
     volumes:
       - ./frontend:/app
     ports:
-      - "3000:3000"
+      - "13000:3000"
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=http://localhost:18000
+      - BACKEND_API_URL=http://backend:8000
     command: >
       sh -c "npm install && npm run dev"
+    depends_on:
+      - backend

@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 
+// 根据环境变量确定后端地址（Docker 内使用服务名，外部使用 localhost）
+const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
+
 const nextConfig: NextConfig = {
   async rewrites() {
     return [
@@ -10,26 +13,26 @@ const nextConfig: NextConfig = {
       // Audio files served by backend
       {
         source: "/api/studio/audio/:session_id/:filename",
-        destination: "http://localhost:8000/api/studio/audio/:session_id/:filename",
+        destination: `${backendUrl}/api/studio/audio/:session_id/:filename`,
       },
       
       // Script generation - handled by backend
       {
         source: "/api/studio/script",
-        destination: "http://localhost:8000/api/studio/script",
+        destination: `${backendUrl}/api/studio/script`,
       },
       
       // Full pipeline generation - handled by backend
       {
         source: "/api/studio/generate",
-        destination: "http://localhost:8000/api/studio/generate",
+        destination: `${backendUrl}/api/studio/generate`,
       },
       
       // TTS is handled by frontend API route to support external TTS APIs
       // This allows the frontend to proxy to user-configured TTS endpoints (e.g., ngrok)
       // {
       //   source: "/api/studio/tts",
-      //   destination: "http://localhost:8000/api/studio/tts",
+      //   destination: `${backendUrl}/api/studio/tts`,
       // },
       
       // ═══════════════════════════════════════════════════════════════════════════
@@ -39,7 +42,7 @@ const nextConfig: NextConfig = {
       // YouTube video download - handled by backend directly
       {
         source: "/api/v1/tools/video-matcher/download/youtube/:video_id",
-        destination: "http://localhost:8000/api/v1/tools/video-matcher/download/youtube/:video_id",
+        destination: `${backendUrl}/api/v1/tools/video-matcher/download/youtube/:video_id`,
       },
       
       // Other video-matcher routes are handled by frontend API routes:
