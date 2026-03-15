@@ -70,8 +70,12 @@ def get_cookies_path() -> Optional[str]:
 
 def sanitize_filename(filename: str) -> str:
     """Remove or replace illegal characters in filename."""
-    filename = re.sub(r'[<>:"/\\|?*]', '', filename)
+    # Keep only ASCII alphanumeric, spaces, dashes, underscores, and periods
+    # This avoids issues with Unicode characters (smart quotes, full-width chars, etc.)
+    filename = ''.join(c if c.isascii() and (c.isalnum() or c in ' ._-') else '_' for c in filename)
     filename = filename.strip('. ')
+    # Replace multiple consecutive underscores with single one
+    filename = re.sub(r'_+', '_', filename)
     return filename if filename else 'video'
 
 
