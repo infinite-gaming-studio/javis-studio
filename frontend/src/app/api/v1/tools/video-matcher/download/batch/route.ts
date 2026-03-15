@@ -8,7 +8,7 @@ export async function POST(req: Request) {
             "Content-Type": "application/json",
         };
 
-        const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+        const backendUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
         const targetUrl = `${backendUrl}/api/v1/tools/video-matcher/download/batch`;
 
         const res = await fetch(targetUrl, {
@@ -28,17 +28,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ detail: errorDetail }, { status: res.status });
         }
 
-        // Stream the response back to the client
-        const blob = await res.blob();
-        const filename = res.headers.get("content-disposition")?.match(/filename="?([^"]+)"?/)?.[1] || "media_package.zip";
-
-        return new NextResponse(blob, {
-            status: 200,
-            headers: {
-                "Content-Type": "application/zip",
-                "Content-Disposition": `attachment; filename="${filename}"`,
-            },
-        });
+        const data = await res.json();
+        return NextResponse.json(data);
     } catch (error: any) {
         console.error("[Batch Download Proxy] Internal Error:", error);
         return NextResponse.json(

@@ -360,12 +360,34 @@ export default function VideoMatcherPage() {
     });
   };
 
+  // Helper to poll task status
+  const pollTaskStatus = async (taskId: string, onComplete: (resultPath: string) => void, onError: (msg: string) => void) => {
+    const poll = async () => {
+      try {
+        const res = await fetch(`/api/v1/tools/tasks/${taskId}`);
+        if (!res.ok) throw new Error(`Status check failed: ${res.status}`);
+        const task = await res.json();
+
+        if (task.status === "completed") {
+          onComplete(`/api/v1/tools/tasks/${taskId}/download`);
+        } else if (task.status === "failed") {
+          onError(task.message || "任务失败");
+        } else {
+          // Keep polling
+          setTimeout(poll, 2000);
+        }
+      } catch (e: any) {
+        onError(e.message || "轮询任务状态出错");
+      }
+    };
+    poll();
+  };
+
   const handleDownloadAll = async () => {
     if (results.length === 0) return;
     setIsDownloadingAll(true);
 
     try {
-      // Prepare items for backend
       const items = results.map((result, idx) => {
         const selected = result.candidates[result.selectedIndex];
         return {
@@ -378,7 +400,7 @@ export default function VideoMatcherPage() {
           source_url: selected?.source_url || "",
           media_id: selected?.media_id || "",
         };
-      }).filter(item => item.media_url); // Only include items with media_url
+      }).filter(item => item.media_url);
 
       if (items.length === 0) {
         alert("没有可下载的素材");
@@ -386,51 +408,40 @@ export default function VideoMatcherPage() {
         return;
       }
 
-      // Call backend API for batch download
       const response = await fetch("/api/v1/tools/video-matcher/download/batch", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          project_name: projectName,
-          items: items,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ project_name: projectName, items }),
       });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null);
-        throw new Error(errorData?.detail || `下载失败: HTTP ${response.status}`);
+        throw new Error(errorData?.detail || `下载请求失败: HTTP ${response.status}`);
       }
 
-      // Get the ZIP blob
-      const blob = await response.blob();
+      const { task_id } = await response.json();
       
-      // Get filename from Content-Disposition header or use default
-      const contentDisposition = response.headers.get("content-disposition");
-      let filename = `${sanitizeFilename(projectName) || "media_package"}.zip`;
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (match) filename = match[1];
-      }
-
-      // Trigger download
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      // Show success message (backend includes README with details)
-      alert(`打包下载成功！\n\nZIP文件: ${filename}\n大小: ${(blob.size / 1024 / 1024).toFixed(2)} MB\n\n请查看 README.md 了解下载详情。`);
+      pollTaskStatus(
+        task_id,
+        (downloadUrl) => {
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = `${sanitizeFilename(projectName) || "media_package"}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setIsDownloadingAll(false);
+          alert("打包下载任务已完成！");
+        },
+        (error) => {
+          setIsDownloadingAll(false);
+          alert(`打包下载失败: ${error}`);
+        }
+      );
 
     } catch (error: any) {
       console.error("Batch download error:", error);
-      alert(`打包下载失败: ${error.message || "未知错误"}\n\n请检查网络连接后重试。`);
-    } finally {
+      alert(`打包下载失败: ${error.message || "未知错误"}`);
       setIsDownloadingAll(false);
     }
   };
@@ -446,38 +457,30 @@ export default function VideoMatcherPage() {
 
       if (!res.ok) {
         const errorData = await res.json().catch(() => null);
-        throw new Error(errorData?.detail || `下载失败: HTTP ${res.status}`);
+        throw new Error(errorData?.detail || `下载请求失败: HTTP ${res.status}`);
       }
 
-      // Get filename from Content-Disposition header or use default
-      const contentDisposition = res.headers.get("content-disposition");
-      let filename = `${keyword.replace(/[^a-zA-Z0-9]/g, "_")}_${videoId}.mp4`;
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename="?([^"]+)"?/);
-        if (match) filename = match[1];
-      }
+      const { task_id } = await res.json();
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      pollTaskStatus(
+        task_id,
+        (downloadUrl) => {
+          const a = document.createElement("a");
+          a.href = downloadUrl;
+          a.download = `${keyword.replace(/[^a-zA-Z0-9]/g, "_")}_${videoId}.mp4`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setDownloadingYoutube(null);
+        },
+        (error) => {
+          setDownloadingYoutube(null);
+          alert(`YouTube视频下载失败: ${error}`);
+        }
+      );
     } catch (error: any) {
-      // Show detailed error message if available
-      const errorMessage = error.message || "YouTube视频下载失败";
       console.error("YouTube download error:", error);
-      
-      // Check if it's the bot detection error and show helpful tip
-      if (errorMessage.includes("YouTube 检测到异常访问")) {
-        alert(`${errorMessage}\n\n💡 提示：在左侧设置中将「素材类型」切换为「视频」，系统会优先从 Pexels/Pixabay 获取稳定的免费素材。`);
-      } else {
-        alert(errorMessage);
-      }
-    } finally {
+      alert(error.message || "YouTube视频下载失败");
       setDownloadingYoutube(null);
     }
   };

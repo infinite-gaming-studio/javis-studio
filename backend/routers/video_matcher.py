@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import APIRouter, Header, HTTPException, Request, BackgroundTasks
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
 import os
 import re
 import tempfile
-import subprocess
+import asyncio
+from pathlib import Path
 from urllib.parse import quote
 from config import get_settings
 
@@ -15,6 +16,9 @@ from services.video_matcher import (
     SegmentMatch, VideoCandidate, VideoMatchResult,
     MediaCandidate, MediaType, search_youtube_video, search_unsplash_photo
 )
+from services.task_service import task_manager
+from services.ytdlp_service import download_video, update_ytdlp
+from services.download_packager import MediaItem, create_media_package
 
 router = APIRouter(prefix="/api/v1/tools", tags=["Tools"])
 logger = logging.getLogger(__name__)
@@ -48,7 +52,7 @@ async def video_matcher_api(
     youtube_key = x_youtube_key or settings.youtube_api_key
     unsplash_key = x_unsplash_key or settings.unsplash_api_key
 
-    logger.info(f"Video matcher called: pexels_key={'SET' if pexels_key else 'EMPTY'}, pixabay_key={'SET' if pixabay_key else 'EMPTY'}, youtube_key={'SET' if youtube_key else 'EMPTY'}, unsplash_key={'SET' if unsplash_key else 'EMPTY'}, media_type={req.media_type}")
+    logger.info(f"Video matcher called: media_type={req.media_type}")
 
     if not pexels_key and not pixabay_key and not youtube_key and not unsplash_key:
         raise HTTPException(
@@ -59,29 +63,10 @@ async def video_matcher_api(
     if not req.text.strip():
         raise HTTPException(status_code=400, detail="Text payload cannot be empty.")
 
-    # Validate LLM API Key
     if not llm_token or llm_token.strip() == "":
         raise HTTPException(
             status_code=400,
-            detail="Missing LLM API Key. Please configure your OpenAI API Key in settings (点击右上角设置图标)."
-        )
-
-    # Validate media_type
-    if req.media_type not in ("video", "photo"):
-        raise HTTPException(status_code=400, detail="media_type must be 'video' or 'photo'")
-
-    # Note: YouTube only supports video, not photos
-    if req.media_type == "photo" and youtube_key and not pexels_key and not pixabay_key and not unsplash_key:
-        raise HTTPException(
-            status_code=400,
-            detail="YouTube API only supports video search. Please configure Pexels, Pixabay, or Unsplash API Key for photo search."
-        )
-
-    # Note: Unsplash only supports photos, not videos
-    if req.media_type == "video" and unsplash_key and not pexels_key and not pixabay_key and not youtube_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsplash API only supports photo search. Please configure Pexels, Pixabay, or YouTube API Key for video search."
+            detail="Missing LLM API Key. Please configure your OpenAI API Key in settings."
         )
 
     try:
@@ -101,30 +86,12 @@ async def video_matcher_api(
         raise
     except Exception as e:
         logger.error(f"Error in video matcher: {e}")
-        error_msg = str(e)
-        # Provide user-friendly error messages for common issues
-        if "401" in error_msg or "Incorrect API key" in error_msg or "invalid_api_key" in error_msg:
-            raise HTTPException(
-                status_code=400,
-                detail="LLM API Key 无效或已过期。请在设置中检查您的 OpenAI API Key (点击右上角设置图标)。"
-            )
-        elif "429" in error_msg or "rate limit" in error_msg.lower():
-            raise HTTPException(
-                status_code=429,
-                detail="API 调用过于频繁，请稍后再试。"
-            )
-        elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
-            raise HTTPException(
-                status_code=504,
-                detail="请求超时，请检查网络连接或稍后重试。"
-            )
-        else:
-            raise HTTPException(status_code=500, detail=f"处理失败: {error_msg}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class VideoSearchRequest(BaseModel):
     keyword: str
     segment: str
-    media_type: str = "video"  # "video" or "photo"
+    media_type: str = "video"
 
 class VideoSearchResponse(BaseModel):
     segment: str
@@ -146,247 +113,113 @@ async def video_search_api(
     youtube_key = x_youtube_key or settings.youtube_api_key
     unsplash_key = x_unsplash_key or settings.unsplash_api_key
 
-    if not pexels_key and not pixabay_key and not youtube_key and not unsplash_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Missing video API keys. Please configure at least one of Pexels, Pixabay, YouTube, or Unsplash API Key in settings."
-        )
-
-    if not req.keyword.strip():
-        raise HTTPException(status_code=400, detail="Keyword cannot be empty.")
-
-    # Validate media_type
-    if req.media_type not in ("video", "photo"):
-        raise HTTPException(status_code=400, detail="media_type must be 'video' or 'photo'")
-
-    # Note: YouTube only supports video, not photos
-    if req.media_type == "photo" and youtube_key and not pexels_key and not pixabay_key and not unsplash_key:
-        raise HTTPException(
-            status_code=400,
-            detail="YouTube API only supports video search. Please configure Pexels, Pixabay, or Unsplash API Key for photo search."
-        )
-
-    # Note: Unsplash only supports photos, not videos
-    if req.media_type == "video" and unsplash_key and not pexels_key and not pixabay_key and not youtube_key:
-        raise HTTPException(
-            status_code=400,
-            detail="Unsplash API only supports photo search. Please configure Pexels, Pixabay, or YouTube API Key for video search."
-        )
-
     try:
         candidates = await search_all_sources(req.keyword, pexels_key, pixabay_key, youtube_key, unsplash_key, req.media_type)
-        if not candidates:
-            raise HTTPException(status_code=404, detail=f"No {req.media_type} found for keyword: {req.keyword}")
-
         return VideoSearchResponse(
             segment=req.segment,
             keyword=req.keyword,
             media_type=req.media_type,
             candidates=candidates,
         )
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error searching {req.media_type} for keyword {req.keyword}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
-
 class BatchDownloadRequest(BaseModel):
-    """Request for batch media download and packaging."""
     project_name: str
     items: List[Dict[str, Any]]
 
-
 @router.post("/video-matcher/download/batch")
-async def batch_download_media(req: BatchDownloadRequest):
-    """
-    Download multiple media files and package them into a ZIP archive.
-    Returns the ZIP file as a streaming response.
-    """
-    from services.download_packager import MediaItem, create_media_package
-    import asyncio
-    
+async def batch_download_media(req: BatchDownloadRequest, background_tasks: BackgroundTasks):
     if not req.items:
         raise HTTPException(status_code=400, detail="No items to download")
     
-    try:
-        # Convert request items to MediaItem objects
-        media_items = []
-        for i, item_data in enumerate(req.items, 1):
-            media_items.append(MediaItem(
-                index=item_data.get("index", i),
-                segment=item_data.get("segment", ""),
-                keyword=item_data.get("keyword", ""),
-                source=item_data.get("source", ""),
-                media_type=item_data.get("media_type", "video"),
-                media_url=item_data.get("media_url", ""),
-                source_url=item_data.get("source_url", ""),
-                media_id=str(item_data.get("media_id", ""))
-            ))
-        
-        logger.info(f"Batch download requested for {len(media_items)} items")
-        
-        # Create the package
-        zip_bytes, summary = await create_media_package(
-            project_name=req.project_name,
-            items=media_items,
-            max_concurrent=5,
-            timeout=60.0
-        )
-        
-        if summary["successful_downloads"] == 0:
-            raise HTTPException(
-                status_code=500,
-                detail="所有素材下载失败，请检查网络连接或重试"
-            )
-        
-        # Sanitize project name for filename - use ASCII only for compatibility
-        safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', req.project_name).strip('_')[:50]
-        if not safe_name:
-            safe_name = "media_package"
-
-        filename = f"{safe_name}.zip"
-
-        # Encode filename for Content-Disposition header (RFC 5987)
-        # Use both filename (ASCII) and filename* (UTF-8) for compatibility
-        encoded_filename = quote(req.project_name, safe='')
-        content_disposition = f'attachment; filename="{filename}"; filename*=UTF-8\'{encoded_filename}.zip'
-
-        # Return as streaming response
-        def iterfile():
-            yield zip_bytes
-
-        logger.info(f"Returning ZIP package: {filename} ({len(zip_bytes)} bytes)")
-
-        return StreamingResponse(
-            iterfile(),
-            media_type="application/zip",
-            headers={
-                "Content-Disposition": content_disposition,
-                "Content-Length": str(len(zip_bytes)),
-                "X-Download-Summary": str(summary).replace("'", '"')
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in batch download: {e}")
-        raise HTTPException(status_code=500, detail=f"打包下载失败: {str(e)[:200]}")
-
-
-@router.get("/video-matcher/download/youtube/{video_id}/formats")
-async def get_youtube_video_formats(video_id: str):
-    """
-    Get available quality formats for a YouTube video.
-    Returns a list of available quality options.
-    """
-    import asyncio
-    from services.ytdlp_service import get_video_formats
+    task_id = task_manager.create_task(f"Batch Download: {req.project_name}")
     
-    try:
-        formats = await asyncio.get_event_loop().run_in_executor(
-            None, lambda: get_video_formats(video_id)
-        )
-        return {"video_id": video_id, "formats": formats}
-    except Exception as e:
-        logger.error(f"Failed to get video formats for {video_id}: {e}")
-        # Return default options on error
-        return {
-            "video_id": video_id,
-            "formats": [
-                {"label": "高清 (1080p)", "value": "1080"},
-                {"label": "高清 (720p)", "value": "720"},
-                {"label": "标清 (480p)", "value": "480"},
-                {"label": "流畅 (360p)", "value": "360"},
-                {"label": "最佳质量", "value": "best"},
-            ]
-        }
+    async def run_batch_download():
+        try:
+            task_manager.update_task(task_id, status="running", message="Downloading and packaging media...")
+            media_items = []
+            for i, item_data in enumerate(req.items, 1):
+                media_items.append(MediaItem(
+                    index=item_data.get("index", i),
+                    segment=item_data.get("segment", ""),
+                    keyword=item_data.get("keyword", ""),
+                    source=item_data.get("source", ""),
+                    media_type=item_data.get("media_type", "video"),
+                    media_url=item_data.get("media_url", ""),
+                    source_url=item_data.get("source_url", ""),
+                    media_id=str(item_data.get("media_id", ""))
+                ))
+            
+            zip_bytes, summary = await create_media_package(
+                project_name=req.project_name,
+                items=media_items,
+                max_concurrent=5,
+                timeout=300.0
+            )
+            
+            if summary["successful_downloads"] == 0:
+                task_manager.update_task(task_id, status="failed", message="所有素材下载失败，请检查网络连接或重试")
+                return
 
+            # Save the ZIP to a temporary file
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False, suffix=".zip") as temp_zip:
+                temp_zip.write(zip_bytes)
+                temp_file_path = temp_zip.name
+            
+            task_manager.update_task(task_id, status="completed", message="Packaging complete", result_path=temp_file_path)
+            logger.info(f"Task {task_id} completed: {temp_file_path}")
+
+        except Exception as e:
+            logger.error(f"Error in background batch download: {e}")
+            task_manager.update_task(task_id, status="failed", message=str(e))
+
+    background_tasks.add_task(run_batch_download)
+    return {"task_id": task_id}
 
 @router.get("/video-matcher/download/youtube/{video_id}")
-async def download_youtube_video(video_id: str, quality: str = "best"):
-    """
-    Download a YouTube video using yt-dlp (VideoLingo-compatible implementation).
-    Returns the video file as a streaming response.
+async def download_youtube_video(video_id: str, background_tasks: BackgroundTasks, quality: str = "best"):
+    task_id = task_manager.create_task(f"YouTube Download: {video_id}")
+
+    async def run_youtube_download():
+        try:
+            task_manager.update_task(task_id, status="running", message="Updating yt-dlp and starting download...")
+            await asyncio.get_event_loop().run_in_executor(None, update_ytdlp)
+
+            temp_dir = tempfile.mkdtemp()
+            # Wrap lambda to avoid closure issues if needed, but video_id is stable here
+            f = lambda: download_video(video_id, temp_dir, resolution=quality)
+            video_file_path = await asyncio.get_event_loop().run_in_executor(None, f)
+            
+            task_manager.update_task(task_id, status="completed", message="Download complete", result_path=video_file_path)
+            logger.info(f"Task {task_id} completed: {video_file_path}")
+
+        except Exception as e:
+            logger.error(f"Error in background YouTube download: {e}")
+            task_manager.update_task(task_id, status="failed", message=str(e))
+
+    background_tasks.add_task(run_youtube_download)
+    return {"task_id": task_id}
+
+@router.get("/tasks/{task_id}")
+async def get_task_status(task_id: str):
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
+
+@router.get("/tasks/{task_id}/download")
+async def fetch_task_result(task_id: str):
+    task = task_manager.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
     
-    Args:
-        video_id: YouTube video ID
-        quality: Video quality/resolution (360, 480, 720, 1080, 1440, 2160, best). Default: best
-    """
-    import asyncio
-    from pathlib import Path
-    from services.ytdlp_service import download_video, update_ytdlp, YTDLPError, get_cookies_path
-
-    # Validate quality parameter
-    valid_qualities = ["360", "480", "720", "1080", "1440", "2160", "best"]
-    if quality not in valid_qualities:
-        quality = "best"
-
-    # Try to update yt-dlp first (like VideoLingo does)
-    await asyncio.get_event_loop().run_in_executor(None, update_ytdlp)
-
-    # Create temp directory for download (use mkdtemp to avoid auto-cleanup during streaming)
-    temp_dir = tempfile.mkdtemp()
-    try:
-        # Check if cookies are configured
-        cookies_path = get_cookies_path()
-        if not cookies_path:
-            logger.warning("No YouTube cookies configured. Download may fail due to bot detection.")
-        
-        # Download using VideoLingo-style implementation
-        logger.info(f"Downloading YouTube video {video_id} with quality: {quality}")
-        video_file_path = await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: download_video(video_id, temp_dir, resolution=quality)
-        )
-        
-        video_file = Path(video_file_path)
-        filename = video_file.name
-
-        logger.info(f"Successfully downloaded: {filename}")
-
-        # Sanitize filename for Content-Disposition header (must be latin-1 compatible)
-        # Replace full-width and special characters that are not allowed in HTTP headers
-        import re
-        safe_filename = re.sub(r'[^\x00-\x7F]', '_', filename)  # Replace non-ASCII chars
-        safe_filename = re.sub(r'[<>"/\\|?*]', '_', safe_filename)  # Replace filesystem unsafe chars
-
-        # Use FileResponse which properly handles cleanup after transfer
-        return FileResponse(
-            path=video_file,
-            media_type="video/mp4",
-            filename=safe_filename
-        )
-
-    except YTDLPError as e:
-        logger.error(f"yt-dlp error ({e.error_type}): {e.message}")
-        
-        # Map YTDLPError to HTTP exceptions
-        error_mapping = {
-            "bot_detection": (
-                503,
-                "YouTube 检测到异常访问。解决方案（按推荐顺序）：\n\n"
-                "1. 【推荐】优先使用 Pexels/Pixabay 的免费素材（无需登录，下载稳定）\n"
-                "2. 在浏览器中登录 YouTube 账号后，导出 cookies 文件到项目目录\n"
-                "3. 设置 YOUTUBE_COOKIES_PATH 环境变量指向 cookies 文件\n"
-                "4. 使用家用网络/更换 IP 后重试"
-            ),
-            "unavailable": (404, "该视频已被删除或无法访问"),
-            "private": (403, "该视频是私有的，无法下载"),
-            "copyright": (403, "该视频受版权保护，无法下载"),
-            "age_restricted": (403, "该视频有年龄限制，无法下载"),
-            "network": (503, "网络连接问题，请稍后重试"),
-            "no_formats": (404, "无法获取视频下载链接"),
-        }
-        
-        status_code, detail = error_mapping.get(e.error_type, (500, f"下载失败: {e.message}"))
-        raise HTTPException(status_code=status_code, detail=detail)
-        
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="下载超时（超过5分钟），请稍后重试")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error downloading YouTube video: {e}")
-        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)[:200]}")
+    if task.status != "completed" or not task.result_path:
+        raise HTTPException(status_code=400, detail="Task result not ready")
+    
+    file_path = Path(task.result_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="Result file not found")
+    
+    return FileResponse(path=file_path, filename=file_path.name)

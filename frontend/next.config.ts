@@ -44,6 +44,16 @@ const nextConfig: NextConfig = {
         source: "/api/v1/tools/video-matcher/download/youtube/:video_id",
         destination: `${backendUrl}/api/v1/tools/video-matcher/download/youtube/:video_id`,
       },
+
+      // Tasks API - handled by backend directly
+      {
+        source: "/api/v1/tools/tasks/:task_id",
+        destination: `${backendUrl}/api/v1/tools/tasks/:task_id`,
+      },
+      {
+        source: "/api/v1/tools/tasks/:task_id/download",
+        destination: `${backendUrl}/api/v1/tools/tasks/:task_id/download`,
+      },
       
       // Other video-matcher routes are handled by frontend API routes:
       // - /api/v1/tools/video-matcher -> frontend/src/app/api/v1/tools/video-matcher/route.ts

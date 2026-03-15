@@ -28,7 +28,7 @@ export async function POST(req: Request) {
         if (youtubeKey) headers["x-youtube-key"] = youtubeKey;
 
         // Default FastAPI local url is 8000
-        const backendUrl = process.env.BACKEND_URL || "http://127.0.0.1:8000";
+        const backendUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";
         const targetUrl = `${backendUrl}/api/v1/tools/video-matcher`;
 
         const res = await fetch(targetUrl, {
