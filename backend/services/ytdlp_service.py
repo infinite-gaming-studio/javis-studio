@@ -24,6 +24,8 @@ def update_ytdlp() -> bool:
             [sys.executable, "-m", "pip", "install", "-U", "yt-dlp"],
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='replace',
             timeout=60
         )
         if result.returncode == 0:
@@ -96,10 +98,14 @@ def download_video(
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
     
-    # Simple format string - just use best available format
-    format_str = "best/bestvideo+bestaudio"
+    # Format string with resolution limit - more reliable than simple "best"
+    format_str = f"bestvideo[height<={resolution}]+bestaudio/best[height<={resolution}]" if resolution != "best" else "bestvideo+bestaudio/best"
     
-    # Basic yt-dlp options - minimal configuration for reliability
+    # Get CPU count for parallel downloads
+    cpu_count = os.cpu_count() or 4
+    concurrent_fragments = min(cpu_count * 2, 16)
+    
+    # Enhanced yt-dlp options for better reliability
     ydl_opts: Dict[str, Any] = {
         "format": format_str,
         "outtmpl": os.path.join(output_dir, "%(title)s_%(id)s.%(ext)s"),
@@ -107,9 +113,13 @@ def download_video(
         "quiet": True,
         "no_warnings": True,
         "merge_output_format": "mp4",
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 10,
+        "fragment_retries": 10,
         "file_access_retries": 3,
+        # Multi-threading downloads - key for stability
+        "concurrent_fragment_downloads": concurrent_fragments,
+        "buffersize": 32768,
+        "http_chunk_size": 10485760,  # 10MB chunks
         # Add some headers to appear more like a browser
         "headers": {
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -129,20 +139,15 @@ def download_video(
         ydl_opts["progress_hooks"] = [progress_hook]
     
     try:
-        # Import yt-dlp
-        try:
-            from yt_dlp import YoutubeDL
-        except ImportError:
-            logger.info("yt-dlp not found, attempting to install...")
-            subprocess.check_call(
-                [sys.executable, "-m", "pip", "install", "yt-dlp"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-            from yt_dlp import YoutubeDL
+        # Update yt-dlp first (critical for YouTube compatibility)
+        logger.info("Updating yt-dlp to latest version...")
+        update_ytdlp()
+        
+        # Import yt-dlp after update
+        from yt_dlp import YoutubeDL
         
         # Perform download
-        logger.info(f"Starting download for video: {video_id}")
+        logger.info(f"Starting download for video: {video_id} with {concurrent_fragments} parallel connections")
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=True)
             if not info:

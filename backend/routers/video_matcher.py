@@ -307,6 +307,12 @@ async def download_youtube_video(video_id: str):
 
             logger.info(f"Successfully downloaded: {filename}")
 
+            # Sanitize filename for Content-Disposition header (must be latin-1 compatible)
+            # Replace full-width and special characters that are not allowed in HTTP headers
+            import re
+            safe_filename = re.sub(r'[^\x00-\x7F]', '_', filename)  # Replace non-ASCII chars
+            safe_filename = re.sub(r'[<>"/\\|?*]', '_', safe_filename)  # Replace filesystem unsafe chars
+
             # Return the file as streaming response
             def iterfile():
                 with open(video_file, "rb") as f:
@@ -316,7 +322,7 @@ async def download_youtube_video(video_id: str):
                 iterfile(),
                 media_type="video/mp4",
                 headers={
-                    "Content-Disposition": f'attachment; filename="{filename}"',
+                    "Content-Disposition": f'attachment; filename="{safe_filename}"',
                     "Content-Length": str(video_file.stat().st_size)
                 }
             )
