@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import logging
@@ -275,86 +275,118 @@ async def batch_download_media(req: BatchDownloadRequest):
         raise HTTPException(status_code=500, detail=f"打包下载失败: {str(e)[:200]}")
 
 
+@router.get("/video-matcher/download/youtube/{video_id}/formats")
+async def get_youtube_video_formats(video_id: str):
+    """
+    Get available quality formats for a YouTube video.
+    Returns a list of available quality options.
+    """
+    import asyncio
+    from services.ytdlp_service import get_video_formats
+    
+    try:
+        formats = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: get_video_formats(video_id)
+        )
+        return {"video_id": video_id, "formats": formats}
+    except Exception as e:
+        logger.error(f"Failed to get video formats for {video_id}: {e}")
+        # Return default options on error
+        return {
+            "video_id": video_id,
+            "formats": [
+                {"label": "高清 (1080p)", "value": "1080"},
+                {"label": "高清 (720p)", "value": "720"},
+                {"label": "标清 (480p)", "value": "480"},
+                {"label": "流畅 (360p)", "value": "360"},
+                {"label": "最佳质量", "value": "best"},
+            ]
+        }
+
+
 @router.get("/video-matcher/download/youtube/{video_id}")
-async def download_youtube_video(video_id: str):
+async def download_youtube_video(video_id: str, quality: str = "best"):
     """
     Download a YouTube video using yt-dlp (VideoLingo-compatible implementation).
     Returns the video file as a streaming response.
+    
+    Args:
+        video_id: YouTube video ID
+        quality: Video quality/resolution (360, 480, 720, 1080, 1440, 2160, best). Default: best
     """
     import asyncio
     from pathlib import Path
     from services.ytdlp_service import download_video, update_ytdlp, YTDLPError, get_cookies_path
 
+    # Validate quality parameter
+    valid_qualities = ["360", "480", "720", "1080", "1440", "2160", "best"]
+    if quality not in valid_qualities:
+        quality = "best"
+
     # Try to update yt-dlp first (like VideoLingo does)
     await asyncio.get_event_loop().run_in_executor(None, update_ytdlp)
 
-    # Create temp directory for download
-    with tempfile.TemporaryDirectory() as temp_dir:
-        try:
-            # Check if cookies are configured
-            cookies_path = get_cookies_path()
-            if not cookies_path:
-                logger.warning("No YouTube cookies configured. Download may fail due to bot detection.")
-            
-            # Download using VideoLingo-style implementation
-            video_file_path = await asyncio.get_event_loop().run_in_executor(
-                None,
-                lambda: download_video(video_id, temp_dir, resolution="1080")
-            )
-            
-            video_file = Path(video_file_path)
-            filename = video_file.name
+    # Create temp directory for download (use mkdtemp to avoid auto-cleanup during streaming)
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Check if cookies are configured
+        cookies_path = get_cookies_path()
+        if not cookies_path:
+            logger.warning("No YouTube cookies configured. Download may fail due to bot detection.")
+        
+        # Download using VideoLingo-style implementation
+        logger.info(f"Downloading YouTube video {video_id} with quality: {quality}")
+        video_file_path = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: download_video(video_id, temp_dir, resolution=quality)
+        )
+        
+        video_file = Path(video_file_path)
+        filename = video_file.name
 
-            logger.info(f"Successfully downloaded: {filename}")
+        logger.info(f"Successfully downloaded: {filename}")
 
-            # Sanitize filename for Content-Disposition header (must be latin-1 compatible)
-            # Replace full-width and special characters that are not allowed in HTTP headers
-            import re
-            safe_filename = re.sub(r'[^\x00-\x7F]', '_', filename)  # Replace non-ASCII chars
-            safe_filename = re.sub(r'[<>"/\\|?*]', '_', safe_filename)  # Replace filesystem unsafe chars
+        # Sanitize filename for Content-Disposition header (must be latin-1 compatible)
+        # Replace full-width and special characters that are not allowed in HTTP headers
+        import re
+        safe_filename = re.sub(r'[^\x00-\x7F]', '_', filename)  # Replace non-ASCII chars
+        safe_filename = re.sub(r'[<>"/\\|?*]', '_', safe_filename)  # Replace filesystem unsafe chars
 
-            # Return the file as streaming response
-            def iterfile():
-                with open(video_file, "rb") as f:
-                    yield from f
+        # Use FileResponse which properly handles cleanup after transfer
+        return FileResponse(
+            path=video_file,
+            media_type="video/mp4",
+            filename=safe_filename
+        )
 
-            return StreamingResponse(
-                iterfile(),
-                media_type="video/mp4",
-                headers={
-                    "Content-Disposition": f'attachment; filename="{safe_filename}"',
-                    "Content-Length": str(video_file.stat().st_size)
-                }
-            )
-
-        except YTDLPError as e:
-            logger.error(f"yt-dlp error ({e.error_type}): {e.message}")
-            
-            # Map YTDLPError to HTTP exceptions
-            error_mapping = {
-                "bot_detection": (
-                    503,
-                    "YouTube 检测到异常访问。解决方案（按推荐顺序）：\n\n"
-                    "1. 【推荐】优先使用 Pexels/Pixabay 的免费素材（无需登录，下载稳定）\n"
-                    "2. 在浏览器中登录 YouTube 账号后，导出 cookies 文件到项目目录\n"
-                    "3. 设置 YOUTUBE_COOKIES_PATH 环境变量指向 cookies 文件\n"
-                    "4. 使用家用网络/更换 IP 后重试"
-                ),
-                "unavailable": (404, "该视频已被删除或无法访问"),
-                "private": (403, "该视频是私有的，无法下载"),
-                "copyright": (403, "该视频受版权保护，无法下载"),
-                "age_restricted": (403, "该视频有年龄限制，无法下载"),
-                "network": (503, "网络连接问题，请稍后重试"),
-                "no_formats": (404, "无法获取视频下载链接"),
-            }
-            
-            status_code, detail = error_mapping.get(e.error_type, (500, f"下载失败: {e.message}"))
-            raise HTTPException(status_code=status_code, detail=detail)
-            
-        except asyncio.TimeoutError:
-            raise HTTPException(status_code=504, detail="下载超时（超过5分钟），请稍后重试")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error downloading YouTube video: {e}")
-            raise HTTPException(status_code=500, detail=f"下载失败: {str(e)[:200]}")
+    except YTDLPError as e:
+        logger.error(f"yt-dlp error ({e.error_type}): {e.message}")
+        
+        # Map YTDLPError to HTTP exceptions
+        error_mapping = {
+            "bot_detection": (
+                503,
+                "YouTube 检测到异常访问。解决方案（按推荐顺序）：\n\n"
+                "1. 【推荐】优先使用 Pexels/Pixabay 的免费素材（无需登录，下载稳定）\n"
+                "2. 在浏览器中登录 YouTube 账号后，导出 cookies 文件到项目目录\n"
+                "3. 设置 YOUTUBE_COOKIES_PATH 环境变量指向 cookies 文件\n"
+                "4. 使用家用网络/更换 IP 后重试"
+            ),
+            "unavailable": (404, "该视频已被删除或无法访问"),
+            "private": (403, "该视频是私有的，无法下载"),
+            "copyright": (403, "该视频受版权保护，无法下载"),
+            "age_restricted": (403, "该视频有年龄限制，无法下载"),
+            "network": (503, "网络连接问题，请稍后重试"),
+            "no_formats": (404, "无法获取视频下载链接"),
+        }
+        
+        status_code, detail = error_mapping.get(e.error_type, (500, f"下载失败: {e.message}"))
+        raise HTTPException(status_code=status_code, detail=detail)
+        
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail="下载超时（超过5分钟），请稍后重试")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading YouTube video: {e}")
+        raise HTTPException(status_code=500, detail=f"下载失败: {str(e)[:200]}")

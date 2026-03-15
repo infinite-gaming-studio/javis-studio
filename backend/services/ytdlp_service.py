@@ -8,7 +8,7 @@ import re
 import subprocess
 import logging
 from pathlib import Path
-from typing import Optional, Dict, Any, Callable
+from typing import Optional, Dict, Any, Callable, List
 
 logger = logging.getLogger(__name__)
 
@@ -110,9 +110,10 @@ def download_video(
     concurrent_fragments = min(cpu_count * 2, 16)
     
     # Enhanced yt-dlp options for better reliability
+    # Use video_id only as filename to avoid Unicode issues on macOS
     ydl_opts: Dict[str, Any] = {
         "format": format_str,
-        "outtmpl": os.path.join(output_dir, "%(title)s_%(id)s.%(ext)s"),
+        "outtmpl": os.path.join(output_dir, f"{video_id}.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
@@ -157,31 +158,26 @@ def download_video(
             if not info:
                 raise YTDLPError("Failed to extract video info", "extract_error")
             
-            # Get the downloaded file path
+            # Get the downloaded file path (now using video_id only, no Unicode issues)
             filename = ydl.prepare_filename(info)
-            # Handle merged output format
-            if ydl_opts.get("merge_output_format"):
-                base, _ = os.path.splitext(filename)
-                filename = f"{base}.{ydl_opts['merge_output_format']}"
             
-            # Sanitize filename if needed
-            dir_name = os.path.dirname(filename)
-            base_name = os.path.basename(filename)
-            sanitized = sanitize_filename(os.path.splitext(base_name)[0])
-            ext = os.path.splitext(base_name)[1]
-            new_filename = os.path.join(dir_name, f"{sanitized}{ext}")
+            # Handle merged output format - yt-dlp may use .mp4 even if template has .webm
+            base, _ = os.path.splitext(filename)
+            expected_mp4 = f"{base}.mp4"
             
-            if new_filename != filename and os.path.exists(filename):
-                os.rename(filename, new_filename)
-                filename = new_filename
+            if not os.path.exists(filename) and os.path.exists(expected_mp4):
+                filename = expected_mp4
             
             if not os.path.exists(filename):
                 # Try to find the file with different extensions
                 for ext in [".mp4", ".webm", ".mkv", ".mov"]:
-                    alt_filename = os.path.join(dir_name, f"{sanitized}{ext}")
+                    alt_filename = f"{base}{ext}"
                     if os.path.exists(alt_filename):
                         filename = alt_filename
                         break
+            
+            if not os.path.exists(filename):
+                raise YTDLPError(f"Downloaded file not found: {filename}", "file_not_found")
             
             logger.info(f"Successfully downloaded: {filename}")
             return filename
@@ -241,3 +237,65 @@ def get_video_info(video_id: str) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to get video info: {e}")
         return {}
+
+
+def get_video_formats(video_id: str) -> List[Dict[str, Any]]:
+    """
+    Get available video formats/qualities for a YouTube video.
+    Returns a list of available quality options.
+    """
+    youtube_url = f"https://www.youtube.com/watch?v={video_id}"
+    
+    ydl_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+    }
+    
+    try:
+        from yt_dlp import YoutubeDL
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(youtube_url, download=False)
+            
+            # Extract unique heights (resolutions) from video formats
+            formats = info.get("formats", [])
+            heights = set()
+            
+            for fmt in formats:
+                height = fmt.get("height")
+                if height and height > 0:
+                    heights.add(height)
+            
+            # Sort and create quality options
+            sorted_heights = sorted(heights, reverse=True)
+            
+            quality_options = []
+            quality_map = {
+                2160: {"label": "4K (2160p)", "value": "2160"},
+                1440: {"label": "2K (1440p)", "value": "1440"},
+                1080: {"label": "高清 (1080p)", "value": "1080"},
+                720: {"label": "高清 (720p)", "value": "720"},
+                480: {"label": "标清 (480p)", "value": "480"},
+                360: {"label": "流畅 (360p)", "value": "360"},
+            }
+            
+            # Add available qualities
+            for h in sorted_heights:
+                if h in quality_map:
+                    quality_options.append(quality_map[h])
+            
+            # Always add "best" option
+            quality_options.append({"label": "最佳质量", "value": "best"})
+            
+            return quality_options
+            
+    except Exception as e:
+        logger.error(f"Failed to get video formats: {e}")
+        # Return default options on error
+        return [
+            {"label": "高清 (1080p)", "value": "1080"},
+            {"label": "高清 (720p)", "value": "720"},
+            {"label": "标清 (480p)", "value": "480"},
+            {"label": "流畅 (360p)", "value": "360"},
+            {"label": "最佳质量", "value": "best"},
+        ]
