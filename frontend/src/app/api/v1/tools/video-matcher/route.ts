@@ -26,6 +26,9 @@ export async function POST(req: Request) {
         
         const youtubeKey = req.headers.get("x-youtube-key");
         if (youtubeKey) headers["x-youtube-key"] = youtubeKey;
+        
+        const unsplashKey = req.headers.get("x-unsplash-key");
+        if (unsplashKey) headers["x-unsplash-key"] = unsplashKey;
 
         // Default FastAPI local url is 8000
         const backendUrl = process.env.BACKEND_API_URL || "http://127.0.0.1:8000";

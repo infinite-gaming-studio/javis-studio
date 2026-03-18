@@ -55,6 +55,12 @@ const nextConfig: NextConfig = {
         destination: `${backendUrl}/api/v1/tools/tasks/:task_id/download`,
       },
       
+      // Workflow API - handled by backend directly
+      {
+        source: "/api/v1/tools/workflow/:path*",
+        destination: `${backendUrl}/workflow/:path*`,
+      },
+      
       // Other video-matcher routes are handled by frontend API routes:
       // - /api/v1/tools/video-matcher -> frontend/src/app/api/v1/tools/video-matcher/route.ts
       // - /api/v1/tools/video-matcher/search -> frontend/src/app/api/v1/tools/video-matcher/search/route.ts
