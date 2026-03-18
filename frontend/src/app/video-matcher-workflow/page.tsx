@@ -198,7 +198,7 @@ export default function VideoMatcherWorkflowPage() {
           "x-pexels-key": settings.pexelsApiKey || "",
           "x-pixabay-key": settings.pixabayApiKey || "",
           "x-youtube-key": settings.youtubeApiKey || "",
-          "x-unslash-key": settings.unsplashApiKey || "",
+          "x-unsplash-key": settings.unsplashApiKey || "",
         },
         body: JSON.stringify({
           segment: segment,

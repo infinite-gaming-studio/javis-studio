@@ -23,6 +23,7 @@ from services.video_matcher_workflow import (
     SegmentData,
     SegmentWithMedia,
 )
+from config import get_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workflow", tags=["video-matcher-workflow"])
@@ -76,9 +77,9 @@ class ReSearchResponse(BaseModel):
 @router.post("/step1", response_model=Step1Response)
 async def workflow_step1(
     req: Step1Request,
-    x_llm_url: str = Header(...),
-    x_llm_token: str = Header(...),
-    x_llm_model: str = Header(default="gpt-3.5-turbo"),
+    x_llm_url: str = Header(default=""),
+    x_llm_token: str = Header(default=""),
+    x_llm_model: str = Header(default=""),
 ):
     """
     Step 1: AI 分段 + 关键词提取
@@ -93,10 +94,15 @@ async def workflow_step1(
     if not req.text or not req.text.strip():
         raise HTTPException(status_code=400, detail="文本不能为空")
     
+    settings = get_settings()
+    llm_url = x_llm_url or settings.openai_base_url
+    llm_token = x_llm_token or settings.openai_api_key
+    llm_model = x_llm_model or settings.openai_model
+
     workflow = VideoMatcherWorkflow(
-        llm_url=x_llm_url,
-        llm_token=x_llm_token,
-        llm_model=x_llm_model,
+        llm_url=llm_url,
+        llm_token=llm_token,
+        llm_model=llm_model,
     )
     
     result = await workflow.step1_segment(req.text)
@@ -129,18 +135,24 @@ async def workflow_step2(
     if not req.segments:
         raise HTTPException(status_code=400, detail="分段列表不能为空")
     
+    settings = get_settings()
+    pexels_key = x_pexels_key or settings.pexels_api_key
+    pixabay_key = x_pixabay_key or settings.pixabay_api_key
+    youtube_key = x_youtube_key or settings.youtube_api_key
+    unsplash_key = x_unsplash_key or settings.unsplash_api_key
+
     # 检查至少有一个 API Key
-    if not any([x_pexels_key, x_pixabay_key, x_youtube_key, x_unsplash_key]):
+    if not any([pexels_key, pixabay_key, youtube_key, unsplash_key]):
         raise HTTPException(status_code=400, detail="请至少配置一个素材源 API Key")
     
     workflow = VideoMatcherWorkflow(
         llm_url="",  # Step 2 不需要 LLM
         llm_token="",
         llm_model="",
-        pexels_key=x_pexels_key,
-        pixabay_key=x_pixabay_key,
-        youtube_key=x_youtube_key,
-        unsplash_key=x_unsplash_key,
+        pexels_key=pexels_key,
+        pixabay_key=pixabay_key,
+        youtube_key=youtube_key,
+        unsplash_key=unsplash_key,
     )
     
     result = await workflow.step2_search(
@@ -166,14 +178,20 @@ async def workflow_research(
     """
     logger.info(f"Re-search: segment_id={req.segment.get('id')}, keyword={req.new_keyword}")
     
+    settings = get_settings()
+    pexels_key = x_pexels_key or settings.pexels_api_key
+    pixabay_key = x_pixabay_key or settings.pixabay_api_key
+    youtube_key = x_youtube_key or settings.youtube_api_key
+    unsplash_key = x_unsplash_key or settings.unsplash_api_key
+
     workflow = VideoMatcherWorkflow(
         llm_url="",
         llm_token="",
         llm_model="",
-        pexels_key=x_pexels_key,
-        pixabay_key=x_pixabay_key,
-        youtube_key=x_youtube_key,
-        unsplash_key=x_unsplash_key,
+        pexels_key=pexels_key,
+        pixabay_key=pixabay_key,
+        youtube_key=youtube_key,
+        unsplash_key=unsplash_key,
     )
     
     result = await workflow.re_search_single(
