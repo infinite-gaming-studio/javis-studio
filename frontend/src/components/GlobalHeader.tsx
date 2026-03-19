@@ -15,6 +15,7 @@ import {
   Film,
   Palette,
   Code,
+  Layers,
 } from "lucide-react";
 
 // 工具菜单项类型
@@ -54,6 +55,15 @@ const tools: ToolItem[] = [
     icon: <Film className="w-5 h-5" />,
     href: "/video-matcher",
     color: "from-blue-500 to-indigo-500",
+    badge: "New",
+  },
+  {
+    id: "stitch-studio",
+    name: "Stitch 工作台",
+    description: "数据分析特效与视频合成",
+    icon: <Layers className="w-5 h-5" />,
+    href: "/stitch",
+    color: "from-fuchsia-500 to-pink-500",
     badge: "New",
   },
 ];

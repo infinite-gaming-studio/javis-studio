@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "surface-container": "#121215",
+            "on-secondary-container": "#a1a1aa",
+            "surface": "#0c0c0f",
+            "on-primary": "#0a0012",
+            "primary-fixed-dim": "#c4b5fd",
+            "on-primary-fixed": "#2e1065",
+            "secondary": "#71717a",
+            "on-secondary-fixed-variant": "#3f3f46",
+            "primary": "#a78bfa",
+            "on-secondary": "#09090b",
+            "surface-container-low": "#0f0f12",
+            "primary-fixed": "#ede9fe",
+            "on-secondary-fixed": "#18181b",
+            "tertiary-container": "#065f46",
+            "surface-container-lowest": "#09090b",
+            "tertiary-fixed": "#bbf7d0",
+            "outline-variant": "#27272a",
+            "on-tertiary-container": "#bbf7d0",
+            "on-error": "#1a0000",
+            "on-error-container": "#fca5a5",
+            "on-surface": "#fafafa",
+            "surface-tint": "#a78bfa",
+            "on-tertiary": "#001a12",
+            "surface-container-highest": "#1e1e22",
+            "on-tertiary-fixed": "#003318",
+            "tertiary-fixed-dim": "#6ee7b7",
+            "primary-container": "#7c3aed",
+            "on-primary-container": "#ede9fe",
+            "surface-container-high": "#18181b",
+            "surface-dim": "#0c0c0f",
+            "tertiary": "#34d399",
+            "secondary-container": "#27272a",
+            "on-surface-variant": "#a1a1aa",
+            "inverse-surface": "#fafafa",
+            "error": "#ef4444",
+            "on-background": "#fafafa",
+            "background": "#09090b",
+            "on-tertiary-fixed-variant": "#047857",
+            "inverse-primary": "#5b21b6",
+            "error-container": "#3b1111",
+            "outline": "#52525b",
+            "on-primary-fixed-variant": "#5b21b6",
+            "inverse-on-surface": "#09090b",
+            "secondary-fixed": "#a1a1aa",
+            "surface-bright": "#18181b",
+            "surface-variant": "#18181b",
+            "secondary-fixed-dim": "#71717a"
+          },
+          fontFamily: {
+            "headline": ["Geist"],
+            "body": ["Geist"],
+            "label": ["Geist"]
+          },
+          borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+        },
+      },
+    }
+  </script>
+<style>
+    body { font-family: 'Geist', sans-serif; }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: #09090b; }
+    ::-webkit-scrollbar-thumb { background: #27272a; border-radius: 10px; }
+    .studio-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr 340px;
+      height: calc(100vh - 64px);
+    }
+    .track-row:hover .layer-controls { opacity: 1; }
+    .layer-controls { opacity: 0.4; transition: opacity 0.2s; }
+  </style>
+</head>
+<body class="bg-background text-on-surface selection:bg-primary/30">
+<div class="flex h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="h-screen w-64 border-r border-[#27272a] bg-[#09090b] flex flex-col p-4 overflow-y-auto shrink-0 z-[60]">
+<div class="mb-8 px-2">
+<h1 class="text-xl font-bold text-[#fafafa] tracking-tighter">Obsidian AI</h1>
+<p class="text-xs text-on-secondary-variant opacity-60 font-geist tracking-tight text-[#fafafa]">Data Studio</p>
+</div>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-geist tracking-tight">Dashboard</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 bg-[#18181b] text-[#a78bfa] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="movie_edit">movie_edit</span>
+<span class="font-geist tracking-tight">Studio</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="folder_open">folder_open</span>
+<span class="font-geist tracking-tight">Assets</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="insights">insights</span>
+<span class="font-geist tracking-tight">Analytics</span>
+</a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-geist tracking-tight">Settings</span>
+</a>
+</nav>
+<div class="mt-auto pt-4 border-t border-outline-variant">
+<button class="w-full bg-primary text-on-primary py-2.5 rounded-lg font-bold text-sm flex items-center justify-center gap-2 hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-primary/10">
+<span class="material-symbols-outlined text-sm" data-icon="auto_awesome" style="font-variation-settings: 'FILL' 1;">auto_awesome</span>
+          Generate with AI
+        </button>
+</div>
+</aside>
+<div class="flex flex-col flex-1 min-w-0">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center h-16 w-full px-6 sticky top-0 z-50 bg-[#09090b]/80 backdrop-blur-md border-b border-[#27272a] font-geist text-[#fafafa]">
+<div class="flex items-center gap-8">
+<span class="text-lg font-black text-[#fafafa] flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+          Studio Workflow
+        </span>
+<nav class="hidden md:flex gap-1 items-center h-full">
+<a class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors hover:bg-[#18181b] rounded-md px-3 py-1.5 text-sm" href="#">Projects</a>
+<a class="text-[#a78bfa] bg-[#18181b] rounded-md px-3 py-1.5 text-sm font-medium" href="#">Active Canvas</a>
+<a class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors hover:bg-[#18181b] rounded-md px-3 py-1.5 text-sm" href="#">Shared</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="relative group">
+<span class="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-secondary text-sm" data-icon="search">search</span>
+<input class="bg-surface-container border border-outline-variant rounded-full py-1.5 pl-9 pr-4 text-xs focus:ring-1 focus:ring-[#a78bfa] outline-none transition-all w-48 lg:w-64" placeholder="Search studio..." type="text"/>
+</div>
+<div class="flex items-center gap-1">
+<button class="p-2 text-on-surface-variant hover:bg-secondary-container rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="notifications">notifications</span>
+</button>
+<button class="p-2 text-on-surface-variant hover:bg-secondary-container rounded-lg transition-colors">
+<span class="material-symbols-outlined text-[20px]" data-icon="help_outline">help_outline</span>
+</button>
+<div class="h-4 w-px bg-outline-variant mx-2"></div>
+<button class="px-4 py-1.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg text-sm font-bold transition-all">
+              Export
+            </button>
+<div class="w-8 h-8 rounded-full bg-surface-container-highest border border-outline-variant overflow-hidden ml-2 cursor-pointer hover:border-primary/50 transition-colors">
+<img alt="User settings" data-alt="Close up professional portrait of a tech professional" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC1L0lH-0zJRPefdkvhjyhK_56fNNUqNj74-8xj_MNbph-nJZZorf1ox00LUdutcU-vNOdnnAD3-MFg6pU98oOqa68RC9zFT6qS8nzxeWJeQ_spHsiHMUcrx77jd4MFTc_nefFP9ueT4NNRV_O5-FO9waLLEaRMvW5MlxM_FW_zjyy7bMYnWVV7l95x3j10KdLDafIIp7-kueHfF6OXmv7uVcN4MQiTZsrQq2KsIT_TVLBZ8aJgcZopxyicKI3wUThYsdUMEZp55njs"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Main Studio Content -->
+<main class="studio-grid">
+<!-- Left Pane: Project Assets -->
+<section class="border-r border-outline-variant bg-surface-container-lowest flex flex-col">
+<div class="p-4 border-b border-outline-variant space-y-3">
+<div class="flex justify-between items-center">
+<span class="text-[10px] font-bold uppercase tracking-[0.15em] text-secondary">Project Assets</span>
+<button class="material-symbols-outlined text-sm hover:text-primary transition-colors" data-icon="add_box">add_box</button>
+</div>
+<div class="relative">
+<span class="absolute left-2.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-xs text-secondary" data-icon="search">search</span>
+<input class="w-full bg-surface-container border border-outline-variant rounded-md py-1.5 pl-8 pr-3 text-[11px] focus:border-primary/50 outline-none" placeholder="Filter assets..." type="text"/>
+</div>
+</div>
+<!-- Tabs -->
+<div class="flex border-b border-outline-variant px-2">
+<button class="flex-1 py-2 text-[10px] font-bold text-primary border-b-2 border-primary">MEDIA</button>
+<button class="flex-1 py-2 text-[10px] font-bold text-secondary hover:text-on-surface">LOGIC</button>
+<button class="flex-1 py-2 text-[10px] font-bold text-secondary hover:text-on-surface">SCRIPTS</button>
+</div>
+<div class="flex-1 overflow-y-auto p-3 space-y-3">
+<!-- Asset Card -->
+<div class="group p-2.5 rounded-lg border border-outline-variant bg-surface-container-low hover:border-primary/40 hover:bg-surface-container-high cursor-pointer transition-all shadow-sm">
+<div class="aspect-video rounded bg-surface-container-highest mb-2 relative overflow-hidden">
+<img alt="Data Node preview" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" data-alt="Abstract 3D node network visualization with purple light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAIYM1MUYBjGRqYUKuQQ1EKZn2d5yiZudRT4bbvzmyb-W4KCuBvzqYidkjCRMx0EEHTUK26XsTQ6UBm9ce558FGA0aYupNinQOtUkr1WKyaZ9Cixe4qMAgLuS1710g4uuBpN3Mmb1V9pOKnJgUuGSTQfAvUiQvzzP43EBXPMb_cXCV3o5SKjvLqBxRLiU2MpTk-30xo6RDAFodKIapTNKtIfWm6kl-EbQTOqRpG1-zL8XhDcUZ-lR6TKm4brE2rxPs6yN1BNsHCabzn"/>
+<span class="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-md text-[9px] px-1.5 py-0.5 rounded font-bold">JSON</span>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<p class="text-[11px] font-medium truncate w-40">Neural_Graph_v2.json</p>
+<p class="text-[9px] text-secondary">4.2 MB • 2h ago</p>
+</div>
+<span class="material-symbols-outlined text-sm text-secondary opacity-0 group-hover:opacity-100" data-icon="more_vert">more_vert</span>
+</div>
+</div>
+<div class="group p-2.5 rounded-lg border border-outline-variant bg-surface-container-low hover:border-primary/40 hover:bg-surface-container-high cursor-pointer transition-all shadow-sm">
+<div class="aspect-video rounded bg-surface-container-highest mb-2 relative overflow-hidden">
+<img alt="Particle System" class="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" data-alt="Complex digital particle system in a dark environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBkVWfW60AmIxiSQ7jPUh15ebh3S86QygHUyQibrMTaMquEl1OgJHWxcirxgmSuBW0enExgCdiD93Xf9gDIH5uK3ixY6hpkx2Aqunw2oCis7sjmYLQyKSDKCWsIxVOAha71132HWexI7i7iiwILY4qPChNSiyaQCwaj-vUSynJRLSo_Hi-2gQ0rMkT-fYi9x4xIjhAUhUFvlo3av82FNCk3maNP4cDw_unWKMN0asGerLa6YlO0gPzsK6te6-mU8hynyYyEMO6e0Jv"/>
+<span class="absolute top-1.5 right-1.5 bg-black/60 backdrop-blur-md text-[9px] px-1.5 py-0.5 rounded font-bold uppercase">Particle</span>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<p class="text-[11px] font-medium truncate w-40">Traffic_Flow_Base</p>
+<p class="text-[9px] text-secondary">1.8 MB • 5h ago</p>
+</div>
+<span class="material-symbols-outlined text-sm text-secondary opacity-0 group-hover:opacity-100" data-icon="more_vert">more_vert</span>
+</div>
+</div>
+<div class="group p-2.5 rounded-lg border border-outline-variant bg-surface-container-low hover:border-primary/40 hover:bg-surface-container-high cursor-pointer transition-all shadow-sm">
+<div class="aspect-video rounded bg-surface-container-highest mb-2 relative overflow-hidden flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary text-3xl group-hover:scale-110 transition-transform" data-icon="audio_file">audio_file</span>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<p class="text-[11px] font-medium truncate w-40">Ambient_Data_Hum.wav</p>
+<p class="text-[9px] text-secondary">12.4 MB • 1d ago</p>
+</div>
+<span class="material-symbols-outlined text-sm text-secondary opacity-0 group-hover:opacity-100" data-icon="more_vert">more_vert</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Center Pane: Stage & Timeline -->
+<section class="flex flex-col bg-surface overflow-hidden relative shadow-inner">
+<!-- Stage Canvas Toolbar -->
+<div class="absolute top-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 p-1.5 bg-surface-container-highest/70 backdrop-blur-2xl border border-outline-variant/50 rounded-full shadow-2xl">
+<button class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-all text-primary" title="Select Tool"><span class="material-symbols-outlined text-lg" data-icon="near_me" style="font-variation-settings: 'FILL' 1;">near_me</span></button>
+<button class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-all" title="Pan Tool"><span class="material-symbols-outlined text-lg" data-icon="pan_tool">pan_tool</span></button>
+<div class="w-px h-5 bg-outline-variant/50 mx-0.5"></div>
+<button class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-all" title="Toggle Grid"><span class="material-symbols-outlined text-lg" data-icon="grid_4x4">grid_4x4</span></button>
+<button class="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded-full transition-all" title="Reset Camera"><span class="material-symbols-outlined text-lg" data-icon="center_focus_weak">center_focus_weak</span></button>
+<div class="w-px h-5 bg-outline-variant/50 mx-0.5"></div>
+<div class="flex items-center gap-1 bg-black/30 rounded-full px-2 py-1">
+<button class="material-symbols-outlined text-sm hover:text-white" data-icon="remove">remove</button>
+<span class="text-[10px] font-mono w-10 text-center">85%</span>
+<button class="material-symbols-outlined text-sm hover:text-white" data-icon="add">add</button>
+</div>
+</div>
+<!-- Preview Stage -->
+<div class="flex-1 relative flex items-center justify-center bg-[#050507]">
+<!-- Simulated Grid Canvas -->
+<div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: linear-gradient(#fafafa 1px, transparent 1px), linear-gradient(90deg, #fafafa 1px, transparent 1px); background-size: 50px 50px;"></div>
+<div class="relative w-full h-full p-10 flex items-center justify-center">
+<div class="relative max-w-full max-h-full aspect-video rounded-xl border border-outline-variant shadow-[0_0_50px_rgba(0,0,0,0.5)] overflow-hidden group">
+<img alt="Main Animation Canvas" class="w-full h-full object-cover" data-alt="Cinematic high fidelity digital earth network animation with glowing connecting lines" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBMXkMhKvgvvr_NRuidCofNBw-6ProJgt8tQ0vWJiisCMh_YbL5bepSRdyrZUI-vXu6kCU13TCuGAlNr987vZhYOlUSjh5Voe9xPnW4NOicF53Prmw5FP1B0V_6you2Wgtvx_JcLRRieTShhW23Kz7BiCbTCFb83wU7YD7q1Qyj4jf49bG4FmzwyEB4NIJIege3nI8lkztbR651cwgnthQuXCLUYPJjJszFamDkUrHTltaujsET2gdXk4-R1w9EPeQj7PhLQer0xkRX"/>
+<!-- Resolution Indicator -->
+<div class="absolute bottom-4 right-4 flex gap-2">
+<div class="px-2 py-1 bg-black/60 backdrop-blur border border-white/10 rounded-md text-[9px] font-mono text-white/80">3840 x 2160</div>
+<div class="px-2 py-1 bg-black/60 backdrop-blur border border-white/10 rounded-md text-[9px] font-mono text-white/80">60 FPS</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Timeline -->
+<div class="h-72 border-t border-outline-variant bg-surface-container flex flex-col z-30">
+<!-- Timeline Controls -->
+<div class="flex items-center justify-between px-5 py-3 border-b border-outline-variant bg-surface-container-high">
+<div class="flex items-center gap-6">
+<div class="flex items-center gap-1.5">
+<button class="p-1.5 hover:bg-white/10 rounded transition-colors text-secondary hover:text-white" title="Previous Frame"><span class="material-symbols-outlined text-lg" data-icon="step_backward">step_backward</span></button>
+<button class="w-10 h-10 flex items-center justify-center bg-primary text-on-primary rounded-full hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20" title="Play/Pause"><span class="material-symbols-outlined text-2xl" data-icon="play_arrow" style="font-variation-settings: 'FILL' 1;">play_arrow</span></button>
+<button class="p-1.5 hover:bg-white/10 rounded transition-colors text-secondary hover:text-white" title="Next Frame"><span class="material-symbols-outlined text-lg" data-icon="step_forward">step_forward</span></button>
+</div>
+<div class="flex flex-col">
+<span class="text-[14px] font-mono text-primary leading-none">00:14:02</span>
+<span class="text-[9px] font-mono text-secondary tracking-widest mt-1">/ 01:00:00</span>
+</div>
+</div>
+<div class="flex items-center gap-5">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-sm text-secondary" data-icon="zoom_in">zoom_in</span>
+<div class="w-32 h-1 bg-outline-variant rounded-full relative group cursor-pointer">
+<div class="absolute inset-y-0 left-0 w-2/3 bg-primary rounded-full"></div>
+<div class="absolute top-1/2 left-2/3 -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full border-2 border-primary scale-0 group-hover:scale-100 transition-transform"></div>
+</div>
+<span class="material-symbols-outlined text-sm text-secondary" data-icon="zoom_out">zoom_out</span>
+</div>
+<div class="h-5 w-px bg-outline-variant"></div>
+<button class="material-symbols-outlined text-lg text-secondary hover:text-white transition-colors" data-icon="settings">settings</button>
+</div>
+</div>
+<div class="flex-1 overflow-x-auto overflow-y-auto relative">
+<!-- Timeline Ruler -->
+<div class="h-8 border-b border-outline-variant flex items-end px-[160px] relative min-w-max">
+<div class="absolute inset-0 flex items-end gap-[80px] px-[160px]">
+<!-- Markers -->
+<div class="flex flex-col items-center"><div class="w-px h-2 bg-secondary/30 mb-1"></div><span class="text-[9px] font-mono text-secondary">00s</span></div>
+<div class="flex flex-col items-center"><div class="w-px h-2 bg-secondary/30 mb-1"></div><span class="text-[9px] font-mono text-secondary">05s</span></div>
+<div class="flex flex-col items-center"><div class="w-px h-4 bg-primary/50 mb-1"></div><span class="text-[9px] font-mono text-primary font-bold">10s</span></div>
+<div class="flex flex-col items-center"><div class="w-px h-2 bg-secondary/30 mb-1"></div><span class="text-[9px] font-mono text-secondary">15s</span></div>
+<div class="flex flex-col items-center"><div class="w-px h-2 bg-secondary/30 mb-1"></div><span class="text-[9px] font-mono text-secondary">20s</span></div>
+<div class="flex flex-col items-center"><div class="w-px h-2 bg-secondary/30 mb-1"></div><span class="text-[9px] font-mono text-secondary">25s</span></div>
+<div class="flex flex-col items-center"><div class="w-px h-2 bg-secondary/30 mb-1"></div><span class="text-[9px] font-mono text-secondary">30s</span></div>
+</div>
+</div>
+<!-- Tracks -->
+<div class="min-w-max">
+<div class="track-row flex items-center border-b border-outline-variant/30 hover:bg-white/[0.02]">
+<div class="w-[160px] px-4 py-2 flex items-center justify-between border-r border-outline-variant shrink-0 bg-surface-container-high/50 sticky left-0 z-10">
+<div class="flex items-center gap-2 overflow-hidden">
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0" data-icon="grid_view">grid_view</span>
+<span class="text-[10px] truncate font-medium">Node_Graph</span>
+</div>
+<div class="layer-controls flex items-center gap-1">
+<button class="material-symbols-outlined text-[14px] hover:text-white" data-icon="visibility">visibility</button>
+<button class="material-symbols-outlined text-[14px] hover:text-white" data-icon="lock_open">lock_open</button>
+</div>
+</div>
+<div class="flex-1 h-10 flex items-center px-4 relative">
+<div class="absolute left-[80px] w-[240px] h-6 bg-primary/10 border border-primary/30 rounded flex items-center px-2">
+<div class="flex gap-1">
+<div class="w-1.5 h-1.5 bg-primary rounded-full"></div>
+<div class="w-1.5 h-1.5 bg-primary rounded-full ml-12"></div>
+<div class="w-1.5 h-1.5 bg-primary rounded-full ml-24"></div>
+</div>
+</div>
+</div>
+</div>
+<div class="track-row flex items-center border-b border-outline-variant/30 hover:bg-white/[0.02]">
+<div class="w-[160px] px-4 py-2 flex items-center justify-between border-r border-outline-variant shrink-0 bg-surface-container-high/50 sticky left-0 z-10">
+<div class="flex items-center gap-2 overflow-hidden">
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0" data-icon="flare">flare</span>
+<span class="text-[10px] truncate font-medium">Particle_FX</span>
+</div>
+<div class="layer-controls flex items-center gap-1">
+<button class="material-symbols-outlined text-[14px] hover:text-white" data-icon="visibility_off">visibility_off</button>
+<button class="material-symbols-outlined text-[14px] hover:text-white" data-icon="lock">lock</button>
+</div>
+</div>
+<div class="flex-1 h-10 flex items-center px-4 relative">
+<div class="absolute left-[160px] w-[320px] h-6 bg-tertiary/10 border border-tertiary/30 rounded"></div>
+</div>
+</div>
+<div class="track-row flex items-center border-b border-outline-variant/30 hover:bg-white/[0.02]">
+<div class="w-[160px] px-4 py-2 flex items-center justify-between border-r border-outline-variant shrink-0 bg-surface-container-high/50 sticky left-0 z-10">
+<div class="flex items-center gap-2 overflow-hidden">
+<span class="material-symbols-outlined text-[14px] text-secondary shrink-0" data-icon="volume_up">volume_up</span>
+<span class="text-[10px] truncate font-medium">Ambient_SND</span>
+</div>
+<div class="layer-controls flex items-center gap-1">
+<button class="material-symbols-outlined text-[14px] hover:text-white" data-icon="visibility">visibility</button>
+<button class="material-symbols-outlined text-[14px] hover:text-white" data-icon="lock_open">lock_open</button>
+</div>
+</div>
+<div class="flex-1 h-10 flex items-center px-4 relative">
+<div class="w-full h-6 bg-secondary/5 border border-secondary/20 rounded flex items-center overflow-hidden opacity-30">
+<!-- Fake Waveform -->
+<div class="flex items-end gap-[1px] h-full w-full p-1">
+<div class="flex-1 bg-secondary h-1/2"></div><div class="flex-1 bg-secondary h-3/4"></div><div class="flex-1 bg-secondary h-1/4"></div><div class="flex-1 bg-secondary h-1/2"></div><div class="flex-1 bg-secondary h-full"></div><div class="flex-1 bg-secondary h-3/4"></div><div class="flex-1 bg-secondary h-1/2"></div><div class="flex-1 bg-secondary h-3/4"></div><div class="flex-1 bg-secondary h-1/4"></div><div class="flex-1 bg-secondary h-1/2"></div><div class="flex-1 bg-secondary h-full"></div><div class="flex-1 bg-secondary h-3/4"></div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Playhead -->
+<div class="absolute top-0 bottom-0 left-[280px] w-px bg-primary z-20 pointer-events-none">
+<div class="absolute top-0 -left-[5px] w-0 h-0 border-l-[5px] border-l-transparent border-r-[5px] border-r-transparent border-t-[8px] border-t-primary"></div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Pane: AI Studio Controls -->
+<section class="border-l border-outline-variant bg-surface-container-low flex flex-col overflow-hidden">
+<div class="p-4 border-b border-outline-variant flex items-center justify-between">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="text-[10px] font-bold uppercase tracking-[0.15em] text-on-surface">AI Studio</span>
+</div>
+<button class="material-symbols-outlined text-sm text-secondary hover:text-white" data-icon="refresh">refresh</button>
+</div>
+<div class="flex-1 overflow-y-auto">
+<!-- Collapsible Section: Physics -->
+<div class="border-b border-outline-variant/30">
+<button class="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+<span class="text-[10px] font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-xs" data-icon="architecture">architecture</span>
+              Physics Engine
+            </span>
+<span class="material-symbols-outlined text-sm text-secondary transition-transform group-hover:text-primary" data-icon="expand_more">expand_more</span>
+</button>
+<div class="px-4 pb-4 space-y-4">
+<div>
+<div class="flex justify-between text-[10px] mb-2 text-secondary">
+<span>Logic Elasticity</span>
+<span class="text-primary font-mono">82%</span>
+</div>
+<div class="h-1 bg-outline-variant rounded-full overflow-hidden group cursor-pointer">
+<div class="h-full bg-primary w-[82%] group-hover:brightness-110"></div>
+</div>
+</div>
+<div>
+<div class="flex justify-between text-[10px] mb-2 text-secondary">
+<span>Spring Stiffness</span>
+<span class="text-secondary font-mono">500k</span>
+</div>
+<div class="h-1 bg-outline-variant rounded-full overflow-hidden group cursor-pointer">
+<div class="h-full bg-outline w-[40%] group-hover:bg-primary/50"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Collapsible Section: Rendering -->
+<div class="border-b border-outline-variant/30">
+<button class="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+<span class="text-[10px] font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-xs" data-icon="shutter_speed">shutter_speed</span>
+              Rendering Engine
+            </span>
+<span class="material-symbols-outlined text-sm text-secondary transition-transform" data-icon="expand_more">expand_more</span>
+</button>
+<div class="px-4 pb-4 space-y-3">
+<div class="grid grid-cols-2 gap-2">
+<div class="p-2 border border-outline-variant rounded bg-surface-container-highest/30 hover:border-primary/40 transition-colors cursor-pointer">
+<span class="text-[8px] block text-secondary uppercase mb-1">Color Mode</span>
+<span class="text-[10px] font-medium">Monochrome</span>
+</div>
+<div class="p-2 border border-outline-variant rounded bg-surface-container-highest/30 hover:border-primary/40 transition-colors cursor-pointer">
+<span class="text-[8px] block text-secondary uppercase mb-1">Density</span>
+<span class="text-[10px] font-medium">Ultra-High</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Collapsible Section: Logic Code -->
+<div class="border-b border-outline-variant/30">
+<button class="w-full px-4 py-3 flex items-center justify-between hover:bg-white/[0.02] transition-colors group">
+<span class="text-[10px] font-bold text-secondary uppercase tracking-wider flex items-center gap-2">
+<span class="material-symbols-outlined text-xs" data-icon="terminal">terminal</span>
+              Injected Scripts
+            </span>
+<span class="material-symbols-outlined text-sm text-secondary" data-icon="unfold_less">unfold_less</span>
+</button>
+<div class="px-4 pb-4">
+<div class="p-3 bg-black/40 border border-outline-variant rounded-lg font-mono relative group">
+<div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+<button class="material-symbols-outlined text-xs text-secondary hover:text-primary" data-icon="content_copy">content_copy</button>
+</div>
+<code class="text-[11px] text-on-surface-variant block leading-relaxed">
+<span class="text-primary/70">if</span> (data.throughput &gt; 0.8) {<br/>
+                  node.glow = <span class="text-tertiary">lerp</span>(node.glow, 1.2, 0.1);<br/>
+                  spring.stiffness = 500;<br/>
+                }
+              </code>
+</div>
+</div>
+</div>
+</div>
+<!-- Integrated AI Command Input -->
+<div class="p-4 bg-surface-container-high border-t border-outline-variant shadow-2xl">
+<div class="relative group">
+<textarea class="w-full bg-surface-container-lowest border border-outline-variant rounded-xl p-3 pr-10 text-[11px] focus:border-primary/60 outline-none min-h-[90px] resize-none transition-all placeholder:text-secondary/50" placeholder="Ask AI to modify physics, shaders, or layouts..."></textarea>
+<button class="absolute bottom-3 right-3 w-8 h-8 flex items-center justify-center bg-primary text-on-primary rounded-lg hover:scale-105 active:scale-95 transition-all shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined text-sm" data-icon="send" style="font-variation-settings: 'FILL' 1;">send</span>
+</button>
+</div>
+<div class="mt-3 flex items-center justify-center gap-1.5 opacity-50">
+<span class="material-symbols-outlined text-[10px]" data-icon="info">info</span>
+<p class="text-[9px] uppercase tracking-tighter">AI understands layout, physics, and shader logic.</p>
+</div>
+</div>
+</section>
+</main>
+</div>
+</div>
+</body></html>

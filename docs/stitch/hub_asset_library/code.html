@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Animation Hub | Obsidian AI</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "surface-container": "#121215",
+              "on-secondary-container": "#a1a1aa",
+              "surface": "#0c0c0f",
+              "on-primary": "#0a0012",
+              "primary-fixed-dim": "#c4b5fd",
+              "on-primary-fixed": "#2e1065",
+              "secondary": "#71717a",
+              "on-secondary-fixed-variant": "#3f3f46",
+              "primary": "#a78bfa",
+              "on-secondary": "#09090b",
+              "surface-container-low": "#0f0f12",
+              "primary-fixed": "#ede9fe",
+              "on-secondary-fixed": "#18181b",
+              "tertiary-container": "#065f46",
+              "surface-container-lowest": "#09090b",
+              "tertiary-fixed": "#bbf7d0",
+              "outline-variant": "#27272a",
+              "on-tertiary-container": "#bbf7d0",
+              "on-error": "#1a0000",
+              "on-error-container": "#fca5a5",
+              "on-surface": "#fafafa",
+              "surface-tint": "#a78bfa",
+              "on-tertiary": "#001a12",
+              "surface-container-highest": "#1e1e22",
+              "on-tertiary-fixed": "#003318",
+              "tertiary-fixed-dim": "#6ee7b7",
+              "primary-container": "#7c3aed",
+              "on-primary-container": "#ede9fe",
+              "surface-container-high": "#18181b",
+              "surface-dim": "#0c0c0f",
+              "tertiary": "#34d399",
+              "secondary-container": "#27272a",
+              "on-surface-variant": "#a1a1aa",
+              "inverse-surface": "#fafafa",
+              "error": "#ef4444",
+              "on-background": "#fafafa",
+              "background": "#09090b",
+              "on-tertiary-fixed-variant": "#047857",
+              "inverse-primary": "#5b21b6",
+              "error-container": "#3b1111",
+              "outline": "#52525b",
+              "on-primary-fixed-variant": "#5b21b6",
+              "inverse-on-surface": "#09090b",
+              "secondary-fixed": "#a1a1aa",
+              "surface-bright": "#18181b",
+              "surface-variant": "#18181b",
+              "secondary-fixed-dim": "#71717a"
+            },
+            fontFamily: {
+              "headline": ["Geist"],
+              "body": ["Geist"],
+              "label": ["Geist"]
+            },
+            borderRadius: {"DEFAULT": "0.25rem", "lg": "0.5rem", "xl": "0.75rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        body { font-family: 'Geist', sans-serif; }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface flex min-h-screen overflow-hidden">
+<!-- SideNavBar -->
+<aside class="hidden md:flex flex-col h-screen w-64 border-r border-[#27272a] bg-[#09090b] p-4 overflow-y-auto font-geist tracking-tight text-[#fafafa]">
+<div class="mb-8 px-2">
+<h1 class="text-xl font-bold text-[#fafafa] tracking-tighter">Obsidian AI</h1>
+<p class="text-xs text-on-surface-variant uppercase tracking-widest mt-1">Data Studio</p>
+</div>
+<button class="mb-8 w-full py-2.5 bg-primary text-on-primary rounded-lg font-bold flex items-center justify-center gap-2 transition-all active:scale-95 duration-100 shadow-lg shadow-primary/10">
+<span class="material-symbols-outlined text-sm">add</span>
+            Generate with AI
+        </button>
+<nav class="flex-1 space-y-1">
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined">dashboard</span>
+                Dashboard
+            </a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined">movie_edit</span>
+                Studio
+            </a>
+<a class="flex items-center gap-3 px-4 py-2 bg-[#27272a] text-[#a78bfa] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined">folder_open</span>
+                Assets
+            </a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined">insights</span>
+                Analytics
+            </a>
+<a class="flex items-center gap-3 px-4 py-2 text-[#a1a1aa] hover:text-[#fafafa] hover:bg-[#18181b] rounded-lg transition-all" href="#">
+<span class="material-symbols-outlined">settings</span>
+                Settings
+            </a>
+</nav>
+<div class="mt-auto pt-4 border-t border-outline-variant flex items-center gap-3 px-2">
+<img alt="User profile" class="w-8 h-8 rounded-full border border-outline-variant" data-alt="Close up portrait of a male professional" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB5OU8WR4i0xfu5wGLKSf6uWwsInZ_AOr_q-_UGAMY4oW6yeCM9onLzMbQjq8D-gfMGN0HLYvP7ceeysv_1KGS6ovCnpgwbt4l_MWyoNvlIjS2AJf_JPObOUA0eg1eXsfTyXWLvZBeGkmLtWhzY5KImhmgK2VwVB1ikBrg0S0HptsN9RM4O1Bic5ELD3VwYiZq1jeCPACaMwK2Gft1a8h2LtCyYz-zkV-Oy0Ot2TqJ9EBFYNd7N9TZCLCVZ37dv-TuTsUugMK54bFGw"/>
+<div class="flex flex-col">
+<span class="text-sm font-medium">Alex Rivera</span>
+<span class="text-xs text-on-surface-variant">Pro Plan</span>
+</div>
+</div>
+</aside>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center h-16 w-full px-6 sticky top-0 z-50 bg-[#09090b]/80 backdrop-blur-md border-b border-[#27272a] font-geist text-[#fafafa]">
+<div class="flex items-center gap-8">
+<span class="text-lg font-black text-[#fafafa]">Animation Hub</span>
+<div class="relative hidden lg:block">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-sm">search</span>
+<input class="bg-surface-container border border-outline-variant rounded-lg pl-10 pr-4 py-1.5 text-sm w-64 focus:ring-2 focus:ring-[#a78bfa] focus:ring-offset-2 focus:ring-offset-[#09090b] outline-none transition-all" placeholder="Search logic modules..." type="text"/>
+</div>
+</div>
+<nav class="flex items-center gap-6">
+<a class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors hover:bg-[#27272a] rounded-md px-2 py-1 text-sm font-medium" href="#">Projects</a>
+<a class="text-[#a1a1aa] hover:text-[#fafafa] transition-colors hover:bg-[#27272a] rounded-md px-2 py-1 text-sm font-medium" href="#">Templates</a>
+<a class="text-[#a78bfa] border-b-2 border-[#a78bfa] pb-1 text-sm font-medium" href="#">Shared</a>
+<div class="h-4 w-px bg-outline-variant mx-2"></div>
+<button class="flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">notifications</span>
+</button>
+<button class="flex items-center gap-2 text-on-surface-variant hover:text-on-surface transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+</button>
+<button class="bg-primary px-4 py-1.5 rounded-lg text-on-primary text-sm font-bold active:scale-95 transition-all">
+                    Export
+                </button>
+</nav>
+</header>
+<!-- Canvas -->
+<div class="flex-1 overflow-y-auto p-6 md:p-10">
+<!-- Header Section -->
+<div class="max-w-7xl mx-auto mb-10">
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-6">
+<div>
+<h2 class="text-3xl font-extrabold tracking-tight mb-2">Asset Library</h2>
+<p class="text-on-surface-variant max-w-xl">Browse and deploy AI-driven animation logic modules. Connect your JSON or real-time data streams to high-performance visual nodes.</p>
+</div>
+<div class="flex gap-2">
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-container-high border border-outline-variant rounded-lg text-sm font-medium hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-sm">filter_list</span>
+                            Filter
+                        </button>
+<button class="flex items-center gap-2 px-4 py-2 bg-surface-container-high border border-outline-variant rounded-lg text-sm font-medium hover:bg-surface-container-highest transition-colors">
+<span class="material-symbols-outlined text-sm">sort</span>
+                            Sort
+                        </button>
+</div>
+</div>
+</div>
+<!-- Bento Grid of Animation Cards -->
+<div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+<!-- Card 1: Particle Flow -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl overflow-hidden flex flex-col hover:border-primary/50 transition-all duration-300">
+<div class="relative aspect-video bg-surface-container-low overflow-hidden">
+<img alt="Particle Flow preview" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Abstract fluid dark purple particle network flow" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDaiV1mif1RpMlmdVf70Z3jjz_cfLPTFdb2eqDAi8h4mWoBQ_VmP6jX7zJn8l-fE90IuVY76ZPHgBowPfLIJ9lAUBP3O3p0cWY2J_ur7wTKxPHSmsITnw1N6xkfe8jDuZfhd_TyPyd5b-j6J7hc8rtAHO809l29PfwBHpYFtjNF-yzLnGjMnJW1NspCydwa-SPuy8J8RUnq9gj8wfV4M8_YBznXF_J1R8TIbE8Rqjq_a3U3zW_-SLk8oIHVCFH7s1G1fmXuhRfMMWvS"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent"></div>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider border border-tertiary/20">Real-time</span>
+</div>
+<button class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<div class="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md border border-primary/50 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary fill-current" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</div>
+</button>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-lg font-bold tracking-tight">Particle Flow</h3>
+<span class="text-xs text-on-surface-variant font-mono">v2.4.0</span>
+</div>
+<p class="text-sm text-on-surface-variant mb-6 line-clamp-2">Dynamic fluid-simulated particle systems that react to amplitude and frequency data inputs.</p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border border-surface bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">data_object</span>
+</div>
+<div class="w-6 h-6 rounded-full border border-surface bg-tertiary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">bolt</span>
+</div>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                                Add to Studio
+                            </button>
+</div>
+</div>
+</div>
+<!-- Card 2: Force Directed Graph -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl overflow-hidden flex flex-col hover:border-primary/50 transition-all duration-300">
+<div class="relative aspect-video bg-surface-container-low overflow-hidden">
+<img alt="Force Directed Graph preview" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Complex neon green data node network visualization" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtjA-w06cCC1dFtTLX2Mw-LmwSWkvWsu3UIkrW0ifMGXg97MyFI7egGwCd7BbcVMLm250SeGtkk1BuxZ6YJIDUEpVpMB0AveKx3UIQSaGBEMi8GMsOM9n1JPD7OvK7w19rCb6K-nE5z_hqRkoFTzZuVxMUmJA7lDMeHQJChySrOi0f9J0sTfoWIlQriAx8_CUIJvoHQA94c81blSZ-VkNGWfjVNOr-4xZw5i6HpzoFsR0l6pSZiaFinhJeKxfKae7gekFGJ4f4usuF"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent"></div>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase tracking-wider border border-blue-500/20">JSON</span>
+</div>
+<button class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<div class="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md border border-primary/50 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary fill-current" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</div>
+</button>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-lg font-bold tracking-tight">Force Directed Graph</h3>
+<span class="text-xs text-on-surface-variant font-mono">v1.1.2</span>
+</div>
+<p class="text-sm text-on-surface-variant mb-6 line-clamp-2">N-body simulation logic for hierarchical data clusters with auto-layout constraints.</p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border border-surface bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">share</span>
+</div>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                                Add to Studio
+                            </button>
+</div>
+</div>
+</div>
+<!-- Card 3: Bar Chart Morphing -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl overflow-hidden flex flex-col hover:border-primary/50 transition-all duration-300">
+<div class="relative aspect-video bg-surface-container-low overflow-hidden">
+<img alt="Bar Chart Morphing preview" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="High contrast geometric bar charts shifting shapes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0tTA7JR6cRhRFbvT0Kfx-URYMN_YjXx0UQ-mhQDfBvWgztSX-s2Q0YFBaEdx6cjQLMYQSHRPufwmydBDGVcOPEyv0CGfIR1upP590jdBXZFMapUZWE6wdrFSJ-fJD9UdlS7TYYZDfXs-pwiWPqy23Q3oEoYHkS0w41lVEjfZQHVc9ol1MbEOunElChs103CrGmhvuAlsenbrRAFpzrdsTPtkNBdJllJpb_4EGfi4kOxaWanotFGgsNJdY5HdCd-SOQEG1E1xDfjAl"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent"></div>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase tracking-wider border border-blue-500/20">JSON</span>
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider border border-tertiary/20">Real-time</span>
+</div>
+<button class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<div class="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md border border-primary/50 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary fill-current" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</div>
+</button>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-lg font-bold tracking-tight">Bar Chart Morphing</h3>
+<span class="text-xs text-on-surface-variant font-mono">v3.0.1</span>
+</div>
+<p class="text-sm text-on-surface-variant mb-6 line-clamp-2">Fluid transitions between categorical states with staggered delay and elastic easing.</p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border border-surface bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">equalizer</span>
+</div>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                                Add to Studio
+                            </button>
+</div>
+</div>
+</div>
+<!-- Card 4: Neural Web -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl overflow-hidden flex flex-col hover:border-primary/50 transition-all duration-300">
+<div class="relative aspect-video bg-surface-container-low overflow-hidden">
+<img alt="Neural Web preview" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Abstract glowing purple neural network nodes" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsOZx89XpGLKq5c2NzsBnehTiwDfTUD1ksa0XMKJblAqJUy9T41bptZfAPlyvpaJtNWxRXuitqfZamlg8uB0FuWcqihCufwfC4Yqk723lHwSrG037v0W6ZNaeVmA7bub6n6zl_qz19xgLtxRlVWocNC7N1nJm0rnKIDdBEYdHlCcG3TIYtbbCOTJyT28ETK4Tz50iQY3WoJfEaqbNMUXRkemOuvjfi6-VgPgJDRWHE6plWksYOApIjti1GG3X7V9mpryzDoFalyZdT"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent"></div>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider border border-tertiary/20">Real-time</span>
+</div>
+<button class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<div class="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md border border-primary/50 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary fill-current" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</div>
+</button>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-lg font-bold tracking-tight">Neural Web</h3>
+<span class="text-xs text-on-surface-variant font-mono">v1.4.5</span>
+</div>
+<p class="text-sm text-on-surface-variant mb-6 line-clamp-2">Interactive synaptic connection animation for machine learning training visualizations.</p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border border-surface bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">psychology</span>
+</div>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                                Add to Studio
+                            </button>
+</div>
+</div>
+</div>
+<!-- Card 5: Geographic Pulse -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl overflow-hidden flex flex-col hover:border-primary/50 transition-all duration-300">
+<div class="relative aspect-video bg-surface-container-low overflow-hidden">
+<img alt="Geographic Pulse preview" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Dark world map with glowing purple data points" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDHhRYK4E_kTZgdCDWGP3cXSEkkj3voXe9XHgzttbO3EAvnkC97gSuzWJ3MbBobqYRnK5zRklnfV_8kCfo35W6d-I6-8Au0Y0i7ID2AniEKoMSt5FW8eadQ2F6Y9hY-jP9CwzGUySDR9MZeT2zTYCxuckziTkUoCAdILNjZYgvW8STx0uwvJoyAHmB-_hlWdLbUET-cQZ8G8Q1BlKdfn-e0iCZhtAOPIlR8MG4mOMNzbj2705iAmnV3469uthBURdi3YuF5q8XjGOf3"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent"></div>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase tracking-wider border border-blue-500/20">JSON</span>
+</div>
+<button class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<div class="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md border border-primary/50 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary fill-current" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</div>
+</button>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-lg font-bold tracking-tight">Geographic Pulse</h3>
+<span class="text-xs text-on-surface-variant font-mono">v0.9.8</span>
+</div>
+<p class="text-sm text-on-surface-variant mb-6 line-clamp-2">Mercator and orthographic projection pulses for global event tracking and log analysis.</p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border border-surface bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">public</span>
+</div>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                                Add to Studio
+                            </button>
+</div>
+</div>
+</div>
+<!-- Card 6: Vector Field -->
+<div class="group bg-surface-container border border-outline-variant rounded-xl overflow-hidden flex flex-col hover:border-primary/50 transition-all duration-300">
+<div class="relative aspect-video bg-surface-container-low overflow-hidden">
+<img alt="Vector Field preview" class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Abstract mathematical vector field in shades of violet" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAHlKDtqY3DLb1jrqqfe2VZz6Y7WKRYR71wYEujF0UiXI7QGJfAomeKwDlsZKyHJqBiUJjCsRwwX52_MJuF1SeTLB3WKlDTvHQSvB8MBJbB7NCDlABAVWzhiTvdJbSYQSi4IMnGyvYtbksfNBg5vkdEp-WQN0EJdlsphWaIyfGD7JoDxx0-TAKa51dvu40moI3lGZc9XDlwE4M56EK_y7V_weSXLZ_IlNWbh850f2dlZ9ZGgkm4lCjpVjVTd4YNEcK0qKRqGmZ6ChVz"/>
+<div class="absolute inset-0 bg-gradient-to-t from-surface-container to-transparent"></div>
+<div class="absolute top-3 left-3 flex gap-2">
+<span class="px-2 py-0.5 rounded bg-tertiary/10 text-tertiary text-[10px] font-bold uppercase tracking-wider border border-tertiary/20">Real-time</span>
+</div>
+<button class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+<div class="w-12 h-12 rounded-full bg-primary/20 backdrop-blur-md border border-primary/50 flex items-center justify-center">
+<span class="material-symbols-outlined text-primary fill-current" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</div>
+</button>
+</div>
+<div class="p-5 flex flex-col flex-1">
+<div class="flex justify-between items-start mb-2">
+<h3 class="text-lg font-bold tracking-tight">Vector Field</h3>
+<span class="text-xs text-on-surface-variant font-mono">v1.0.0</span>
+</div>
+<p class="text-sm text-on-surface-variant mb-6 line-clamp-2">Mathematical vector representations for visualizing wind, current, or gradient descent data.</p>
+<div class="mt-auto flex items-center justify-between">
+<div class="flex -space-x-2">
+<div class="w-6 h-6 rounded-full border border-surface bg-primary/20 flex items-center justify-center">
+<span class="material-symbols-outlined text-[10px]">trending_up</span>
+</div>
+</div>
+<button class="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined text-sm">add</span>
+                                Add to Studio
+                            </button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</body></html>

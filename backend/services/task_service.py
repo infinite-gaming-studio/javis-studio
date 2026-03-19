@@ -13,6 +13,7 @@ class TaskStatus(BaseModel):
     progress: float = 0.0
     message: str = ""
     result_path: Optional[str] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
     created_at: float = Field(default_factory=time.time)
     updated_at: float = Field(default_factory=time.time)
 
@@ -35,13 +36,14 @@ class TaskManager:
         self._tasks[task_id] = task
         return task_id
 
-    def update_task(self, task_id: str, status: str = None, progress: float = None, message: str = None, result_path: str = None):
+    def update_task(self, task_id: str, status: str = None, progress: float = None, message: str = None, result_path: str = None, details: Dict[str, Any] = None):
         if task_id in self._tasks:
             task = self._tasks[task_id]
             if status: task.status = status
             if progress is not None: task.progress = progress
             if message: task.message = message
             if result_path: task.result_path = result_path
+            if details is not None: task.details.update(details)
             task.updated_at = time.time()
             logger.info(f"Task {task_id} updated: {task.status} - {task.message}")
 
