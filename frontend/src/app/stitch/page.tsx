@@ -29,10 +29,21 @@ import {
   Zap,
   SlidersHorizontal,
   Loader2,
-  Sparkles
+  Sparkles,
+  Send,
+  ImagePlus,
+  X,
+  MessageSquare
 } from "lucide-react";
 
 type Tab = "hub" | "studio";
+
+interface ChatMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  image?: string;
+}
 
 interface EffectItem {
   id: string;
@@ -43,6 +54,7 @@ interface EffectItem {
   color: string;
   thumbnailGradient: string;
   echartsOption?: any; // The generated ECharts options
+  chatHistory?: ChatMessage[];
 }
 
 const CATEGORIES = ["全部", "金融展示", "地理分布", "趋势动态", "占比排名", "AI 生成"];
@@ -112,6 +124,20 @@ const INITIAL_MOCK_EFFECTS: EffectItem[] = [
   },
 ];
 
+// Icon mapping for persistence
+const ICON_MAP: Record<string, React.ReactNode> = {
+  "LineChart": <LineChart className="w-5 h-5" />,
+  "BarChart3": <BarChart3 className="w-5 h-5" />,
+  "PieChart": <PieChart className="w-5 h-5" />,
+  "Sparkles": <Sparkles className="w-5 h-5" />
+};
+
+const getIconName = (icon: React.ReactNode): string => {
+  if (!icon || !('type' in (icon as any))) return "Sparkles";
+  const type = (icon as any).type?.name || (icon as any).type?.displayName;
+  return type || "Sparkles";
+};
+
 export default function StitchStudioPage() {
   const [activeTab, setActiveTab] = useState<Tab>("hub");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -125,11 +151,63 @@ export default function StitchStudioPage() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
 
-  // Studio States
   const [studioItems, setStudioItems] = useState<EffectItem[]>([]);
   const [selectedStudioItemId, setSelectedStudioItemId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+
+  // Persistence Loading Effect
+  useEffect(() => {
+    const savedPool = localStorage.getItem("stitch_effects_pool");
+    const savedStudio = localStorage.getItem("stitch_studio_items");
+
+    if (savedPool) {
+      try {
+        const parsed = JSON.parse(savedPool);
+        const mapped = parsed.map((item: any) => ({
+          ...item,
+          icon: ICON_MAP[item.iconName] || <Sparkles className="w-5 h-5" />
+        }));
+        setEffectsPool(mapped);
+      } catch (e) { console.error("Failed to load effects pool", e); }
+    }
+
+    if (savedStudio) {
+      try {
+        const parsed = JSON.parse(savedStudio);
+        const mapped = parsed.map((item: any) => ({
+          ...item,
+          icon: ICON_MAP[item.iconName] || <Sparkles className="w-5 h-5" />
+        }));
+        setStudioItems(mapped);
+      } catch (e) { console.error("Failed to load studio items", e); }
+    }
+  }, []);
+
+  // Persistence Saving Effects
+  useEffect(() => {
+    const toSave = effectsPool.map(item => ({
+      ...item,
+      icon: null, // Don't serialize React node
+      iconName: getIconName(item.icon)
+    }));
+    localStorage.setItem("stitch_effects_pool", JSON.stringify(toSave));
+  }, [effectsPool]);
+
+  useEffect(() => {
+    const toSave = studioItems.map(item => ({
+      ...item,
+      icon: null,
+      iconName: getIconName(item.icon)
+    }));
+    localStorage.setItem("stitch_studio_items", JSON.stringify(toSave));
+  }, [studioItems]);
+
+  // Chat States
+  const [chatInput, setChatInput] = useState("");
+  const [chatImage, setChatImage] = useState<string | null>(null);
+  const [isChatting, setIsChatting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const echartsRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -182,7 +260,18 @@ export default function StitchStudioPage() {
 
       let parsedOption;
       try {
-        parsedOption = new Function("echarts", "return " + data.optionString)(echarts);
+        const optionStr = data.optionString || "";
+        if (!optionStr.trim()) {
+           throw new Error("AI 生成的配置为空。");
+        }
+        
+        const evalFn = new Function("echarts", "return " + optionStr);
+        parsedOption = evalFn(echarts);
+        
+        if (!parsedOption || typeof parsedOption !== 'object') {
+          throw new Error("AI 生成的配置不是有效的对象。");
+        }
+        
         if (!parsedOption.backgroundColor) parsedOption.backgroundColor = 'transparent';
       } catch (err) {
         throw new Error("解析生成的特效异常: " + String(err));
@@ -210,8 +299,122 @@ export default function StitchStudioPage() {
     }
   };
 
+  // Chat Edit Handlers
+  const handleChatImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setChatImage(event.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSendChat = async () => {
+    if ((!chatInput.trim() && !chatImage) || isChatting || !selectedItem) return;
+    
+    setIsChatting(true);
+    
+    const newUserMsg: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      role: "user",
+      content: chatInput,
+      image: chatImage || undefined
+    };
+
+    const currentHistory = selectedItem.chatHistory || [];
+    const updatedHistory = [...currentHistory, newUserMsg];
+    
+    // Optimistic update
+    setStudioItems(prev => prev.map(item => 
+      item.id === selectedItem.id 
+        ? { ...item, chatHistory: updatedHistory } 
+        : item
+    ));
+
+    const promptText = chatInput;
+    const attachedImage = chatImage;
+    
+    setChatInput("");
+    setChatImage(null);
+
+    try {
+      const settings = getSettings();
+      const res = await fetch("/api/v1/tools/stitch/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-llm-url": settings.llmApiUrl || "",
+          "x-llm-token": settings.llmToken || "",
+          "x-llm-model": settings.llmModel || ""
+        },
+        body: JSON.stringify({
+          messages: currentHistory,
+          currentOption: selectedItem.echartsOption,
+          prompt: promptText,
+          image: attachedImage
+        })
+      });
+
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.detail || "请求失败");
+      }
+
+      let parsedOption;
+      try {
+        const optionStr = data.optionString || "";
+        if (!optionStr.trim()) {
+           throw new Error("AI 修改的配置为空。");
+        }
+
+        const evalFn = new Function("echarts", "return " + optionStr);
+        parsedOption = evalFn(echarts);
+        
+        if (!parsedOption || typeof parsedOption !== 'object') {
+          throw new Error("AI 修改后的配置不是有效的对象。");
+        }
+        
+        if (!parsedOption.backgroundColor) parsedOption.backgroundColor = 'transparent';
+      } catch (err) {
+        throw new Error("解析生成的特效异常: " + String(err));
+      }
+
+      const newAsstMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        role: "assistant",
+        content: data.reply
+      };
+
+      setStudioItems(prev => prev.map(item => 
+        item.id === selectedItem.id 
+          ? { 
+              ...item, 
+              echartsOption: parsedOption,
+              chatHistory: [...updatedHistory, newAsstMsg] 
+            } 
+          : item
+      ));
+
+    } catch (e: any) {
+      alert(`编辑出错: ${e.message}`);
+    } finally {
+      setIsChatting(false);
+    }
+  };
+
   // Recording Functions
-  const handleStartRecording = useCallback(() => {
+  const handleToggleRecording = useCallback(() => {
+    if (isRecording) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+        setIsPlaying(false);
+      }
+      return;
+    }
+
     if (!echartsRef.current) return;
     
     // Get ECharts instance canvas
@@ -229,48 +432,60 @@ export default function StitchStudioPage() {
     }
 
     try {
-      // 60FPS stream
-      const stream = canvasElement.captureStream(60); 
-      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs=vp9' });
-      chunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-         if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-
-      recorder.onstop = () => {
-         const blob = new Blob(chunksRef.current, { type: 'video/webm' });
-         const url = URL.createObjectURL(blob);
-         const a = document.createElement('a');
-         a.href = url;
-         a.download = `stitch-export-${Date.now()}.webm`;
-         document.body.appendChild(a);
-         a.click();
-         document.body.removeChild(a);
-         URL.revokeObjectURL(url);
-         alert("视频已合成并下载！");
-      };
-
-      mediaRecorderRef.current = recorder;
-      recorder.start();
-      setIsRecording(true);
-      setIsPlaying(true);
-
-      // Record for 5 seconds automatically then stop
+      // Small delay to ensure the canvas has cleared/restarted its animation before recording begins
       setTimeout(() => {
-        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-          mediaRecorderRef.current.stop();
-          setIsRecording(false);
-          setIsPlaying(false);
+        // 60FPS stream
+        const stream = canvasElement.captureStream(60); 
+        
+        let targetMimeType = 'video/webm; codecs=vp9';
+        const mimeTypes = [
+          'video/mp4',
+          'video/webm;codecs=h264',
+          'video/webm;codecs=vp9',
+          'video/webm'
+        ];
+        
+        for (const type of mimeTypes) {
+           if (MediaRecorder.isTypeSupported(type)) {
+             targetMimeType = type;
+             break;
+           }
         }
-      }, 5000); // Export 5s chunk
+        
+        const extension = targetMimeType.includes('mp4') ? 'mp4' : 'webm';
+
+        const recorder = new MediaRecorder(stream, { mimeType: targetMimeType });
+        chunksRef.current = [];
+
+        recorder.ondataavailable = (e) => {
+           if (e.data.size > 0) chunksRef.current.push(e.data);
+        };
+
+        recorder.onstop = () => {
+           const blob = new Blob(chunksRef.current, { type: targetMimeType });
+           const url = URL.createObjectURL(blob);
+           const a = document.createElement('a');
+           a.href = url;
+           a.download = `stitch-export-${Date.now()}.${extension}`;
+           document.body.appendChild(a);
+           a.click();
+           document.body.removeChild(a);
+           URL.revokeObjectURL(url);
+           alert("视频已合成并下载！");
+        };
+
+        mediaRecorderRef.current = recorder;
+        recorder.start();
+        setIsRecording(true);
+        setIsPlaying(true);
+      }, 50); // slight delay to allow setOption to trigger frame update
 
     } catch (e) {
       console.error(e);
       alert("录制异常，您的浏览器可能不支持该画布录制API。");
       setIsRecording(false);
     }
-  }, [selectedItem]);
+  }, [selectedItem, isRecording]);
 
 
   return (
@@ -470,7 +685,8 @@ export default function StitchStudioPage() {
                       {filteredEffects.map((effect, idx) => (
                         <div 
                           key={effect.id} 
-                          className="group bg-white rounded-2xl border border-white/80 shadow-sm hover:shadow-2xl hover:shadow-slate-300/40 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden flex flex-col ring-1 ring-slate-100"
+                          onClick={() => handleAddToStudio(effect)}
+                          className="group bg-white rounded-2xl border border-white/80 shadow-sm hover:shadow-2xl hover:shadow-slate-300/40 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden flex flex-col ring-1 ring-slate-100 cursor-pointer"
                         >
                           {/* Thumbnail Simulation */}
                           <div className={`h-44 bg-gradient-to-br ${effect.thumbnailGradient} relative flex items-center justify-center overflow-hidden`}>
@@ -599,7 +815,8 @@ export default function StitchStudioPage() {
                              ref={echartsRef}
                              option={selectedItem.echartsOption}
                              style={{height: '100%', width: '100%'}}
-                             opts={{ renderer: 'canvas' }} 
+                             opts={{ renderer: 'canvas' }}
+                             notMerge={true}
                            />
                          ) : (
                            <div className="text-slate-500">
@@ -627,61 +844,133 @@ export default function StitchStudioPage() {
                   <div className="h-14 bg-slate-950/80 backdrop-blur-md border-t border-white/5 flex items-center justify-between px-6 z-20">
                     <div className="flex items-center gap-4">
                       <span className="text-xs font-mono text-slate-400">
-                        使用右侧按钮一键重绘动画并记录录屏 &gt;&gt;
+                        {isRecording ? "正在全帧率录制动画，点击停止按钮结束录制 >>" : "点击按钮一键重绘动画并开始录制 >>"}
                       </span>
                     </div>
 
                     <button 
-                      onClick={handleStartRecording}
-                      disabled={!selectedItem?.echartsOption || isRecording}
-                      className="px-5 py-1.5 bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 shadow-lg shadow-red-500/20 flex items-center gap-2"
+                      onClick={handleToggleRecording}
+                      disabled={!selectedItem?.echartsOption}
+                      className={`px-5 py-1.5 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2 ${
+                        isRecording 
+                        ? 'bg-slate-700 hover:bg-slate-600 shadow-md shadow-slate-900/20' 
+                        : 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-400 hover:to-rose-500 shadow-lg shadow-red-500/20'
+                      }`}
                     >
                       {isRecording ? (
                         <>
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" /> 录制中 (5s) ...
+                          <span className="w-2.5 h-2.5 rounded-sm bg-red-500 animate-pulse" /> 停止录制
                         </>
                       ) : (
                         <>
-                          <MonitorPlay className="w-3.5 h-3.5" /> 生成5秒动画视频
+                          <MonitorPlay className="w-3.5 h-3.5" /> 开始自由录屏
                         </>
                       )}
                     </button>
                   </div>
                 </div>
 
-                {/* Right Panel: Properties */}
-                <div className="w-72 bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
-                  <div className="p-4 border-b border-slate-100/60 flex items-center gap-2 bg-white/40">
-                    <SlidersHorizontal className="w-4 h-4 text-fuchsia-500" />
-                    <h3 className="font-semibold text-slate-800 text-sm">属性配置</h3>
+                {/* Right Panel: Properties / Chat Edit */}
+                <div className="w-80 bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
+                  <div className="p-4 border-b border-slate-100/60 flex items-center justify-between bg-white/40">
+                    <div className="flex items-center gap-2">
+                       <MessageSquare className="w-4 h-4 text-fuchsia-500" />
+                       <h3 className="font-semibold text-slate-800 text-sm">AI 持续编辑</h3>
+                    </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                    {selectedItem ? (
-                      <div className="space-y-6">
-                        <div className="space-y-3">
-                          <label className="text-xs font-bold text-slate-500 uppercase">当前特效</label>
-                          <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-                            <div className="font-medium text-sm text-slate-800">{selectedItem.title}</div>
-                            <div className="text-[10px] text-fuchsia-600 font-bold mt-1 bg-fuchsia-50 w-fit px-2 py-0.5 rounded border border-fuchsia-100">{selectedItem.category}</div>
+                  {selectedItem ? (
+                    <>
+                      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar flex flex-col">
+                        <div className="text-center text-xs text-slate-400 my-2">
+                           —— 开始与 AI 对话以修改图表 ——
+                        </div>
+                        {(selectedItem.chatHistory || []).map((msg) => (
+                           <div key={msg.id} className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'} animate-in fade-in slide-in-from-bottom-2`}>
+                             {msg.image && (
+                               <img src={msg.image} alt="upload" className="max-w-full h-auto rounded-lg mb-1 border border-slate-200 shadow-sm" />
+                             )}
+                             <div className={`px-4 py-2.5 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-fuchsia-500 text-white rounded-tr-sm shadow-md shadow-fuchsia-500/20' : 'bg-white text-slate-700 rounded-tl-sm shadow-sm border border-slate-100 whitespace-pre-wrap leading-relaxed'}`}>
+                               {msg.content}
+                             </div>
+                           </div>
+                        ))}
+                        {isChatting && (
+                           <div className="self-start bg-white text-slate-500 px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 text-sm flex items-center gap-2 animate-pulse">
+                              <Loader2 className="w-4 h-4 animate-spin" /> 正在分析与应用修改...
+                           </div>
+                        )}
+                        {/* Auto-scroll target */}
+                        <div className="h-4 shrink-0" />
+                      </div>
+                      
+                      {/* Chat Input */}
+                      <div className="p-3 bg-white/80 border-t border-slate-100/80 m-2 rounded-2xl shadow-sm space-y-2 relative">
+                        {chatImage && (
+                          <div className="relative inline-block m-1">
+                            <img src={chatImage} alt="preview" className="h-16 rounded-lg border border-slate-200" />
+                            <button onClick={() => setChatImage(null)} className="absolute -top-2 -right-2 bg-slate-800 text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform">
+                              <X className="w-3 h-3" />
+                            </button>
                           </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
-                            <Zap className="w-3.5 h-3.5" /> AI 模型来源图表 
-                          </label>
-                          <p className="text-xs text-slate-500 leading-relaxed bg-white/80 p-3 rounded-xl border border-slate-200 shadow-inner">
-                            这是通过 ECharts 和你设定的大语言模型 API 结合生成的实时数据图表。你可以随意切换图层来覆盖中央 Canvas。一旦准备就绪，点击下方红框按钮录制视频。
-                          </p>
+                        )}
+                        <div className="flex items-end gap-2">
+                           <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-fuchsia-500 hover:bg-fuchsia-50 rounded-xl transition-colors shrink-0">
+                             <ImagePlus className="w-5 h-5" />
+                           </button>
+                           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleChatImageUpload} />
+                           
+                           <textarea
+                             value={chatInput}
+                             onChange={(e) => {
+                               setChatInput(e.target.value);
+                               // Auto resize
+                               e.target.style.height = 'auto';
+                               e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
+                             }}
+                             onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSendChat();
+                                }
+                             }}
+                             onPaste={(e) => {
+                               // Support Ctrl+V / Cmd+V image paste from clipboard
+                               const items = Array.from(e.clipboardData.items);
+                               const imageItem = items.find(item => item.type.startsWith("image/"));
+                               if (imageItem) {
+                                 e.preventDefault();
+                                 const file = imageItem.getAsFile();
+                                 if (!file) return;
+                                 const reader = new FileReader();
+                                 reader.onload = (ev) => {
+                                   const base64 = ev.target?.result as string;
+                                   if (base64) setChatImage(base64);
+                                 };
+                                 reader.readAsDataURL(file);
+                               }
+                             }}
+                             placeholder="输入修改指令... (可直接 Ctrl+V 粘贴图片)"
+                             className="flex-1 min-h-[40px] p-2 bg-transparent text-sm resize-none focus:outline-none placeholder:text-slate-400 custom-scrollbar overflow-y-auto"
+                             rows={1}
+                             style={{ height: '40px' }}
+                           />
+                           
+                           <button 
+                             onClick={handleSendChat}
+                             disabled={(!chatInput.trim() && !chatImage) || isChatting}
+                             className="p-2 bg-fuchsia-500 hover:bg-fuchsia-600 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl transition-colors shrink-0 shadow-sm"
+                           >
+                             <Send className="w-4 h-4" />
+                           </button>
                         </div>
                       </div>
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-center">
-                        <p className="text-sm text-slate-400">选择图层以编辑</p>
-                      </div>
-                    )}
-                  </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-center">
+                      <p className="text-sm text-slate-400">选择图层以编辑</p>
+                    </div>
+                  )}
                 </div>
 
               </div>
