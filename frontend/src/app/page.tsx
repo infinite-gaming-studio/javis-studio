@@ -7,6 +7,7 @@ import {
   generateScript,
   ttsSingle,
 } from "@/lib/api";
+import { useNotification } from "@/lib/NotificationContext";
 
 import {
   Sparkles,
@@ -234,6 +235,8 @@ function generateId(): string {
 }
 
 export default function StudioPage() {
+  const { showConfirm } = useNotification();
+  
   const [projectName, setProjectName] = useState("");
   const [topic, setTopic] = useState("");
   const [images, setImages] = useState<string[]>([]);
@@ -314,20 +317,26 @@ export default function StudioPage() {
 
   // 清空所有内容
   const handleClearAll = useCallback(() => {
-    if (confirm("确定要清空所有内容吗？此操作不可恢复。")) {
-      setCurrentProjectId(null);
-      setProjectName("");
-      setTopic("");
-      setPrompt("");
-      setImages([]);
-      setScript([]);
-      setSegments([]);
-      setVoiceSettings(DEFAULT_VOICE);
-      setStep("idle");
-      setError("");
-      clearTempData();
-    }
-  }, []);
+    showConfirm({
+      title: "清空内容",
+      message: "确定要清空所有内容吗？此操作不可恢复。",
+      confirmText: "清空",
+      cancelText: "取消",
+      onConfirm: () => {
+        setCurrentProjectId(null);
+        setProjectName("");
+        setTopic("");
+        setPrompt("");
+        setImages([]);
+        setScript([]);
+        setSegments([]);
+        setVoiceSettings(DEFAULT_VOICE);
+        setStep("idle");
+        setError("");
+        clearTempData();
+      }
+    });
+  }, [showConfirm]);
 
   // 保存当前项目到历史记录
   const saveCurrentProject = useCallback(() => {

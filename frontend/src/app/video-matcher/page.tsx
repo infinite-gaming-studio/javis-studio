@@ -5,6 +5,7 @@ import { Download, Film, Image, Loader2, Play, Edit2, Search, Check, Folder, Sav
 import { getSettings } from "@/lib/api";
 import GlobalHeader from "@/components/GlobalHeader";
 import SettingsModal from "@/components/SettingsModal";
+import { useNotification } from "@/lib/NotificationContext";
 
 type MediaType = "video" | "photo";
 
@@ -51,6 +52,8 @@ const sanitizeFilename = (name: string): string => {
 };
 
 export default function VideoMatcherPage() {
+  const { showToast, showConfirm, showError, showSuccess } = useNotification();
+  
   // Project state
   const [projectName, setProjectName] = useState("未命名项目");
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
@@ -117,7 +120,7 @@ export default function VideoMatcherPage() {
   // Save current project
   const saveProject = useCallback(() => {
     if (!projectName.trim()) {
-      alert("请输入项目名称");
+      showToast("请输入项目名称", "warning");
       return;
     }
 
@@ -154,7 +157,7 @@ export default function VideoMatcherPage() {
     setLastSaved(new Date());
     
     setTimeout(() => setIsSaving(false), 500);
-  }, [projectName, subtitleText, results, globalMediaType, currentProjectId, savedProjects]);
+  }, [projectName, subtitleText, results, globalMediaType, currentProjectId, savedProjects, showToast]);
 
   // Load a project
   const loadProject = useCallback((project: Project) => {
@@ -181,21 +184,27 @@ export default function VideoMatcherPage() {
   // Delete a project
   const deleteProject = useCallback((projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("确定要删除这个项目吗？此操作无法撤销。")) return;
-    
-    setSavedProjects(prev => {
-      const newProjects = prev.filter(p => p.id !== projectId);
-      if (typeof window !== "undefined") {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newProjects));
-      }
-      return newProjects;
-    });
+    showConfirm({
+      title: "删除项目",
+      message: "确定要删除这个项目吗？此操作无法撤销。",
+      confirmText: "删除",
+      cancelText: "取消",
+      onConfirm: () => {
+        setSavedProjects(prev => {
+          const newProjects = prev.filter(p => p.id !== projectId);
+          if (typeof window !== "undefined") {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(newProjects));
+          }
+          return newProjects;
+        });
 
-    // If deleting current project, reset
-    if (currentProjectId === projectId) {
-      setCurrentProjectId(null);
-    }
-  }, [currentProjectId]);
+        // If deleting current project, reset
+        if (currentProjectId === projectId) {
+          setCurrentProjectId(null);
+        }
+      }
+    });
+  }, [currentProjectId, showConfirm]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -296,7 +305,7 @@ export default function VideoMatcherPage() {
       });
       setEditingIndex(null);
     } catch (error: any) {
-      alert(error.message || "替换失败");
+      showError(error.message || "替换失败");
     } finally {
       setReplacingIndex(null);
     }
@@ -346,7 +355,7 @@ export default function VideoMatcherPage() {
         return newResults;
       });
     } catch (error: any) {
-      alert(error.message || `切换${targetMediaType === "video" ? "视频" : "图片"}失败`);
+      showError(error.message || `切换${targetMediaType === "video" ? "视频" : "图片"}失败`);
     } finally {
       setReplacingIndex(null);
     }
@@ -403,7 +412,7 @@ export default function VideoMatcherPage() {
       }).filter(item => item.media_url);
 
       if (items.length === 0) {
-        alert("没有可下载的素材");
+        showToast("没有可下载的素材", "warning");
         setIsDownloadingAll(false);
         return;
       }
@@ -431,17 +440,17 @@ export default function VideoMatcherPage() {
           a.click();
           document.body.removeChild(a);
           setIsDownloadingAll(false);
-          alert("打包下载任务已完成！");
+          showSuccess("打包下载任务已完成！");
         },
         (error) => {
           setIsDownloadingAll(false);
-          alert(`打包下载失败: ${error}`);
+          showError(`打包下载失败: ${error}`);
         }
       );
 
     } catch (error: any) {
       console.error("Batch download error:", error);
-      alert(`打包下载失败: ${error.message || "未知错误"}`);
+      showError(`打包下载失败: ${error.message || "未知错误"}`);
       setIsDownloadingAll(false);
     }
   };
@@ -475,12 +484,12 @@ export default function VideoMatcherPage() {
         },
         (error) => {
           setDownloadingYoutube(null);
-          alert(`YouTube视频下载失败: ${error}`);
+          showError(`YouTube视频下载失败: ${error}`);
         }
       );
     } catch (error: any) {
       console.error("YouTube download error:", error);
-      alert(error.message || "YouTube视频下载失败");
+      showError(error.message || "YouTube视频下载失败");
       setDownloadingYoutube(null);
     }
   };

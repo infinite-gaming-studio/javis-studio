@@ -6,6 +6,7 @@ import SettingsModal from "@/components/SettingsModal";
 import { getSettings } from "@/lib/api";
 import ReactECharts from "echarts-for-react";
 import * as echarts from "echarts";
+import { useNotification } from "@/lib/NotificationContext";
 
 import { 
   Layers, 
@@ -33,7 +34,19 @@ import {
   Send,
   ImagePlus,
   X,
-  MessageSquare
+  MessageSquare,
+  ZoomIn,
+  Upload,
+  RefreshCw,
+  Star,
+  History,
+  GitBranch,
+  Clock,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  Copy,
+  MoreVertical
 } from "lucide-react";
 
 type Tab = "hub" | "studio";
@@ -45,6 +58,16 @@ interface ChatMessage {
   image?: string;
 }
 
+interface EffectVersion {
+  id: string;
+  versionNumber: number;
+  echartsOption: any;
+  chatHistory: ChatMessage[];
+  createdAt: number;
+  isTemplate: boolean;
+  templateName?: string;
+}
+
 interface EffectItem {
   id: string;
   title: string;
@@ -53,11 +76,34 @@ interface EffectItem {
   icon: React.ReactNode;
   color: string;
   thumbnailGradient: string;
-  echartsOption?: any; // The generated ECharts options
-  chatHistory?: ChatMessage[];
+  versions: EffectVersion[];
+  currentVersionId: string;
+  templateVersionId?: string;
+  maxVersions: number;
 }
 
 const CATEGORIES = ["全部", "金融展示", "地理分布", "趋势动态", "占比排名", "AI 生成"];
+
+// Image Preview Modal Component
+function ImagePreviewModal({ src, onClose }: { src: string; onClose: () => void }) {
+  if (!src) return null;
+  return (
+    <div 
+      className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200"
+      onClick={onClose}
+    >
+      <div className="relative max-w-[90vw] max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <img src={src} alt="preview" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" />
+        <button 
+          onClick={onClose}
+          className="absolute -top-3 -right-3 bg-white text-slate-800 rounded-full p-2 shadow-lg hover:bg-slate-100 transition-colors hover:scale-110"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const INITIAL_MOCK_EFFECTS: EffectItem[] = [
   {
@@ -68,13 +114,26 @@ const INITIAL_MOCK_EFFECTS: EffectItem[] = [
     icon: <LineChart className="w-5 h-5" />,
     color: "text-blue-500",
     thumbnailGradient: "from-blue-500/20 to-cyan-500/20 border-cyan-200/50",
-    echartsOption: {
-      backgroundColor: "transparent",
-      animationDuration: 3000,
-      xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], axisLine: { lineStyle: { color: "#fff" }} },
-      yAxis: { type: 'value', splitLine: { lineStyle: { color: "rgba(255,255,255,0.1)" }}, axisLine: { lineStyle: { color: "#fff" }} },
-      series: [{ data: [150, 230, 224, 218, 135, 147, 260], type: 'line', smooth: true, lineStyle: { width: 4, color: '#06b6d4' }, areaStyle: { color: '#06b6d4', opacity: 0.3 } }]
-    }
+    versions: [
+      {
+        id: "v1",
+        versionNumber: 1,
+        echartsOption: {
+          backgroundColor: "transparent",
+          animationDuration: 3000,
+          xAxis: { type: 'category', data: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'], axisLine: { lineStyle: { color: "#fff" }} },
+          yAxis: { type: 'value', splitLine: { lineStyle: { color: "rgba(255,255,255,0.1)" }}, axisLine: { lineStyle: { color: "#fff" }} },
+          series: [{ data: [150, 230, 224, 218, 135, 147, 260], type: 'line', smooth: true, lineStyle: { width: 4, color: '#06b6d4' }, areaStyle: { color: '#06b6d4', opacity: 0.3 } }]
+        },
+        chatHistory: [],
+        createdAt: Date.now() - 86400000,
+        isTemplate: true,
+        templateName: "默认模板"
+      }
+    ],
+    currentVersionId: "v1",
+    templateVersionId: "v1",
+    maxVersions: 5
   },
   {
     id: "eff-02",
@@ -84,13 +143,24 @@ const INITIAL_MOCK_EFFECTS: EffectItem[] = [
     icon: <BarChart3 className="w-5 h-5" />,
     color: "text-fuchsia-500",
     thumbnailGradient: "from-fuchsia-500/20 to-purple-500/20 border-purple-200/50",
-    echartsOption: {
-      backgroundColor: "transparent",
-      animationDuration: 2000,
-      xAxis: { type: 'category', data: ['Q1', 'Q2', 'Q3', 'Q4'], axisLine: { lineStyle: { color: "#fff" }} },
-      yAxis: { type: 'value', splitLine: { lineStyle: { color: "rgba(255,255,255,0.1)" }}, axisLine: { lineStyle: { color: "#fff" }} },
-      series: [{ data: [120, 200, 150, 80], type: 'bar', itemStyle: { color: '#d946ef', borderRadius: [4, 4, 0, 0] } }]
-    }
+    versions: [
+      {
+        id: "v1",
+        versionNumber: 1,
+        echartsOption: {
+          backgroundColor: "transparent",
+          animationDuration: 2000,
+          xAxis: { type: 'category', data: ['Q1', 'Q2', 'Q3', 'Q4'], axisLine: { lineStyle: { color: "#fff" }} },
+          yAxis: { type: 'value', splitLine: { lineStyle: { color: "rgba(255,255,255,0.1)" }}, axisLine: { lineStyle: { color: "#fff" }} },
+          series: [{ data: [120, 200, 150, 80], type: 'bar', itemStyle: { color: '#d946ef', borderRadius: [4, 4, 0, 0] } }]
+        },
+        chatHistory: [],
+        createdAt: Date.now() - 172800000,
+        isTemplate: false
+      }
+    ],
+    currentVersionId: "v1",
+    maxVersions: 5
   },
   {
     id: "eff-06",
@@ -100,27 +170,38 @@ const INITIAL_MOCK_EFFECTS: EffectItem[] = [
     icon: <PieChart className="w-5 h-5" />,
     color: "text-indigo-500",
     thumbnailGradient: "from-indigo-500/20 to-blue-500/20 border-blue-200/50",
-    echartsOption: {
-      backgroundColor: "transparent",
-      animationDurationUpdate: 2000,
-      series: [
-        {
-          name: 'Access From',
-          type: 'pie',
-          radius: ['40%', '70%'],
-          avoidLabelOverlap: false,
-          itemStyle: { borderRadius: 10, borderColor: '#0f172a', borderWidth: 2 },
-          label: { show: false, position: 'center' },
-          emphasis: { label: { show: true, fontSize: 40, fontWeight: 'bold', color: '#fff' } },
-          labelLine: { show: false },
-          data: [
-            { value: 1048, name: 'Search Engine', itemStyle: { color: '#6366f1' } },
-            { value: 735, name: 'Direct', itemStyle: { color: '#8b5cf6' } },
-            { value: 580, name: 'Email', itemStyle: { color: '#ec4899' } }
+    versions: [
+      {
+        id: "v1",
+        versionNumber: 1,
+        echartsOption: {
+          backgroundColor: "transparent",
+          animationDurationUpdate: 2000,
+          series: [
+            {
+              name: 'Access From',
+              type: 'pie',
+              radius: ['40%', '70%'],
+              avoidLabelOverlap: false,
+              itemStyle: { borderRadius: 10, borderColor: '#0f172a', borderWidth: 2 },
+              label: { show: false, position: 'center' },
+              emphasis: { label: { show: true, fontSize: 40, fontWeight: 'bold', color: '#fff' } },
+              labelLine: { show: false },
+              data: [
+                { value: 1048, name: 'Search Engine', itemStyle: { color: '#6366f1' } },
+                { value: 735, name: 'Direct', itemStyle: { color: '#8b5cf6' } },
+                { value: 580, name: 'Email', itemStyle: { color: '#ec4899' } }
+              ]
+            }
           ]
-        }
-      ]
-    }
+        },
+        chatHistory: [],
+        createdAt: Date.now() - 259200000,
+        isTemplate: false
+      }
+    ],
+    currentVersionId: "v1",
+    maxVersions: 5
   },
 ];
 
@@ -139,6 +220,8 @@ const getIconName = (icon: React.ReactNode): string => {
 };
 
 export default function StitchStudioPage() {
+  const { showSuccess, showError } = useNotification();
+  
   const [activeTab, setActiveTab] = useState<Tab>("hub");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   
@@ -155,6 +238,10 @@ export default function StitchStudioPage() {
   const [selectedStudioItemId, setSelectedStudioItemId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [recordedVideoUrl, setRecordedVideoUrl] = useState<string | null>(null);
+  const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
+  const [showVideoPreview, setShowVideoPreview] = useState(false);
+  const [showVersionPanel, setShowVersionPanel] = useState(false);
 
   // Persistence Loading Effect
   useEffect(() => {
@@ -207,6 +294,7 @@ export default function StitchStudioPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatImage, setChatImage] = useState<string | null>(null);
   const [isChatting, setIsChatting] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const echartsRef = useRef<any>(null);
@@ -219,8 +307,107 @@ export default function StitchStudioPage() {
     return matchesSearch && matchesCategory;
   });
 
+  // Helper functions for version management
+  const getCurrentVersion = (item: EffectItem): EffectVersion | undefined => {
+    return item.versions.find(v => v.id === item.currentVersionId);
+  };
+
+  const getTemplateVersion = (item: EffectItem): EffectVersion | undefined => {
+    if (!item.templateVersionId) return undefined;
+    return item.versions.find(v => v.id === item.templateVersionId);
+  };
+
+  const createNewVersion = (item: EffectItem, echartsOption: any, chatHistory: ChatMessage[]): EffectVersion => {
+    const maxVersionNum = Math.max(0, ...item.versions.map(v => v.versionNumber));
+    return {
+      id: `v${maxVersionNum + 1}`,
+      versionNumber: maxVersionNum + 1,
+      echartsOption,
+      chatHistory,
+      createdAt: Date.now(),
+      isTemplate: false
+    };
+  };
+
+  const addVersionToItem = (itemId: string, newVersion: EffectVersion, setItems: React.Dispatch<React.SetStateAction<EffectItem[]>>) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      
+      let updatedVersions = [...item.versions, newVersion];
+      
+      // Keep only maxVersions
+      if (updatedVersions.length > item.maxVersions) {
+        // Don't remove template version
+        const templateVersionId = item.templateVersionId;
+        updatedVersions = updatedVersions
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, item.maxVersions);
+        
+        // Ensure template version is kept if it was in the list
+        if (templateVersionId && !updatedVersions.find(v => v.id === templateVersionId)) {
+          const templateVersion = item.versions.find(v => v.id === templateVersionId);
+          if (templateVersion) {
+            updatedVersions[updatedVersions.length - 1] = templateVersion;
+          }
+        }
+      }
+      
+      return {
+        ...item,
+        versions: updatedVersions,
+        currentVersionId: newVersion.id
+      };
+    }));
+  };
+
+  // Version management functions
+  const handleSwitchVersion = (itemId: string, versionId: string) => {
+    setStudioItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      return { ...item, currentVersionId: versionId };
+    }));
+  };
+
+  const handleToggleTemplate = (itemId: string, versionId: string) => {
+    setStudioItems(prev => prev.map(item => {
+      if (item.id !== itemId) return item;
+      
+      const isCurrentlyTemplate = item.templateVersionId === versionId;
+      
+      return {
+        ...item,
+        templateVersionId: isCurrentlyTemplate ? undefined : versionId,
+        versions: item.versions.map(v => ({
+          ...v,
+          isTemplate: !isCurrentlyTemplate && v.id === versionId,
+          templateName: !isCurrentlyTemplate && v.id === versionId ? "模板" : undefined
+        }))
+      };
+    }));
+  };
+
+  const handleRevertToVersion = (itemId: string, versionId: string) => {
+    const item = studioItems.find(i => i.id === itemId);
+    if (!item) return;
+    
+    const targetVersion = item.versions.find(v => v.id === versionId);
+    if (!targetVersion) return;
+    
+    // Create new version based on target version
+    const newVersion = createNewVersion(item, targetVersion.echartsOption, [...targetVersion.chatHistory]);
+    addVersionToItem(itemId, newVersion, setStudioItems);
+  };
+
   const handleAddToStudio = (item: EffectItem) => {
-    const newItem = { ...item, id: `${item.id}-${Date.now()}` };
+    const currentVersion = getCurrentVersion(item);
+    if (!currentVersion) return;
+    
+    const newItem: EffectItem = {
+      ...item,
+      id: `${item.id}-${Date.now()}`,
+      versions: [{ ...currentVersion, id: "v1", versionNumber: 1 }],
+      currentVersionId: "v1"
+    };
     setStudioItems(prev => [...prev, newItem]);
     setSelectedStudioItemId(newItem.id);
     setActiveTab("studio");
@@ -233,6 +420,7 @@ export default function StitchStudioPage() {
   };
 
   const selectedItem = studioItems.find(item => item.id === selectedStudioItemId);
+  const selectedVersion = selectedItem ? getCurrentVersion(selectedItem) : undefined;
 
   // AI Generation Function
   const handleGenerateAI = async () => {
@@ -285,15 +473,26 @@ export default function StitchStudioPage() {
         icon: <Sparkles className="w-5 h-5" />,
         color: "text-amber-400",
         thumbnailGradient: "from-amber-500/20 to-orange-500/20 border-orange-200/50",
-        echartsOption: parsedOption
+        versions: [
+          {
+            id: "v1",
+            versionNumber: 1,
+            echartsOption: parsedOption,
+            chatHistory: [],
+            createdAt: Date.now(),
+            isTemplate: false
+          }
+        ],
+        currentVersionId: "v1",
+        maxVersions: 5
       };
 
       setEffectsPool([newEffect, ...effectsPool]);
       setAiPrompt("");
-      alert("AI 特效生成成功！已加入图表库中。");
+      showSuccess("AI 特效生成成功！已加入图表库中。");
 
     } catch (e: any) {
-      alert(`生成出错: ${e.message}`);
+      showError(`生成出错: ${e.message}`);
     } finally {
       setIsGenerating(false);
     }
@@ -311,7 +510,7 @@ export default function StitchStudioPage() {
   };
 
   const handleSendChat = async () => {
-    if ((!chatInput.trim() && !chatImage) || isChatting || !selectedItem) return;
+    if ((!chatInput.trim() && !chatImage) || isChatting || !selectedItem || !selectedVersion) return;
     
     setIsChatting(true);
     
@@ -322,15 +521,21 @@ export default function StitchStudioPage() {
       image: chatImage || undefined
     };
 
-    const currentHistory = selectedItem.chatHistory || [];
+    const currentHistory = selectedVersion.chatHistory || [];
     const updatedHistory = [...currentHistory, newUserMsg];
     
-    // Optimistic update
-    setStudioItems(prev => prev.map(item => 
-      item.id === selectedItem.id 
-        ? { ...item, chatHistory: updatedHistory } 
-        : item
-    ));
+    // Optimistic update - update current version's chat history
+    setStudioItems(prev => prev.map(item => {
+      if (item.id !== selectedItem.id) return item;
+      return {
+        ...item,
+        versions: item.versions.map(v => 
+          v.id === item.currentVersionId 
+            ? { ...v, chatHistory: updatedHistory }
+            : v
+        )
+      };
+    }));
 
     const promptText = chatInput;
     const attachedImage = chatImage;
@@ -350,7 +555,7 @@ export default function StitchStudioPage() {
         },
         body: JSON.stringify({
           messages: currentHistory,
-          currentOption: selectedItem.echartsOption,
+          currentOption: selectedVersion.echartsOption,
           prompt: promptText,
           image: attachedImage
         })
@@ -359,7 +564,11 @@ export default function StitchStudioPage() {
       const data = await res.json();
       
       if (!res.ok) {
-        throw new Error(data.detail || "请求失败");
+        const errorMsg = data.detail || "请求失败";
+        if (errorMsg.includes("model") && errorMsg.includes("image")) {
+          throw new Error("当前配置的 AI 模型不支持图片输入。请更换支持多模态的模型（如 GPT-4o、Claude 3.5 Sonnet 等），或移除图片后重新发送。");
+        }
+        throw new Error(errorMsg);
       }
 
       let parsedOption;
@@ -387,18 +596,12 @@ export default function StitchStudioPage() {
         content: data.reply
       };
 
-      setStudioItems(prev => prev.map(item => 
-        item.id === selectedItem.id 
-          ? { 
-              ...item, 
-              echartsOption: parsedOption,
-              chatHistory: [...updatedHistory, newAsstMsg] 
-            } 
-          : item
-      ));
+      // Create new version with updated config and chat history
+      const newVersion = createNewVersion(selectedItem, parsedOption, [...updatedHistory, newAsstMsg]);
+      addVersionToItem(selectedItem.id, newVersion, setStudioItems);
 
     } catch (e: any) {
-      alert(`编辑出错: ${e.message}`);
+      showError(`编辑出错: ${e.message}`);
     } finally {
       setIsChatting(false);
     }
@@ -411,85 +614,195 @@ export default function StitchStudioPage() {
         mediaRecorderRef.current.stop();
         setIsRecording(false);
         setIsPlaying(false);
+        
+        // Restore original background color after recording
+        if (echartsRef.current && selectedVersion?.echartsOption) {
+          const echartInstance = echartsRef.current.getEchartsInstance();
+          const originalOption = JSON.parse(JSON.stringify(selectedVersion.echartsOption));
+          echartInstance.setOption({ backgroundColor: originalOption.backgroundColor || 'transparent' }, false);
+        }
       }
       return;
     }
 
-    if (!echartsRef.current) return;
+    if (!echartsRef.current || !selectedVersion?.echartsOption) return;
     
     // Get ECharts instance canvas
     const echartInstance = echartsRef.current.getEchartsInstance();
     const canvasElement = echartInstance.getDom().querySelector('canvas');
 
     if (!canvasElement) {
-      alert("无法获取画布资源");
+      showError("无法获取画布资源");
       return;
     }
 
-    // Force animations to restart by re-setting the same option
-    if (selectedItem?.echartsOption) {
-       echartInstance.setOption(selectedItem.echartsOption, true);
-    }
+    // Clear chart first to force animation restart
+    echartInstance.clear();
 
     try {
-      // Small delay to ensure the canvas has cleared/restarted its animation before recording begins
-      setTimeout(() => {
-        // 60FPS stream
-        const stream = canvasElement.captureStream(60); 
+      // Wait for clear to take effect, then setOption to trigger animation from scratch
+      requestAnimationFrame(() => {
+        // Deep clone option and set solid background color for recording
+        // This ensures the video has the same background as displayed in the UI
+        const freshOption = JSON.parse(JSON.stringify(selectedVersion.echartsOption));
         
-        let targetMimeType = 'video/webm; codecs=vp9';
-        const mimeTypes = [
-          'video/mp4',
-          'video/webm;codecs=h264',
-          'video/webm;codecs=vp9',
-          'video/webm'
-        ];
+        // Set the actual display background color instead of transparent
+        // The container has bg-[#0f172a] (slate-900)
+        freshOption.backgroundColor = '#0f172a';
         
-        for (const type of mimeTypes) {
-           if (MediaRecorder.isTypeSupported(type)) {
-             targetMimeType = type;
-             break;
-           }
-        }
-        
-        const extension = targetMimeType.includes('mp4') ? 'mp4' : 'webm';
+        echartInstance.setOption(freshOption, true);
 
-        const recorder = new MediaRecorder(stream, { mimeType: targetMimeType });
-        chunksRef.current = [];
+        // Start recording after animation begins (wait for first frames to render)
+        setTimeout(() => {
+          // 60FPS stream
+          const stream = canvasElement.captureStream(60); 
+          
+          let targetMimeType = 'video/webm; codecs=vp9';
+          const mimeTypes = [
+            'video/mp4',
+            'video/webm;codecs=h264',
+            'video/webm;codecs=vp9',
+            'video/webm'
+          ];
+          
+          for (const type of mimeTypes) {
+             if (MediaRecorder.isTypeSupported(type)) {
+               targetMimeType = type;
+               break;
+             }
+          }
+          
+          const extension = targetMimeType.includes('mp4') ? 'mp4' : 'webm';
 
-        recorder.ondataavailable = (e) => {
-           if (e.data.size > 0) chunksRef.current.push(e.data);
-        };
+          const recorder = new MediaRecorder(stream, { mimeType: targetMimeType });
+          chunksRef.current = [];
 
-        recorder.onstop = () => {
-           const blob = new Blob(chunksRef.current, { type: targetMimeType });
-           const url = URL.createObjectURL(blob);
-           const a = document.createElement('a');
-           a.href = url;
-           a.download = `stitch-export-${Date.now()}.${extension}`;
-           document.body.appendChild(a);
-           a.click();
-           document.body.removeChild(a);
-           URL.revokeObjectURL(url);
-           alert("视频已合成并下载！");
-        };
+          recorder.ondataavailable = (e) => {
+             if (e.data.size > 0) chunksRef.current.push(e.data);
+          };
 
-        mediaRecorderRef.current = recorder;
-        recorder.start();
-        setIsRecording(true);
-        setIsPlaying(true);
-      }, 50); // slight delay to allow setOption to trigger frame update
+          recorder.onstop = () => {
+             const blob = new Blob(chunksRef.current, { type: targetMimeType });
+             const url = URL.createObjectURL(blob);
+             setRecordedVideoUrl(url);
+             setRecordedVideoBlob(blob);
+             setShowVideoPreview(true);
+             
+             // Restore original background color
+             const restoreOption = JSON.parse(JSON.stringify(selectedVersion.echartsOption));
+             echartInstance.setOption({ backgroundColor: restoreOption.backgroundColor || 'transparent' }, false);
+          };
+
+          mediaRecorderRef.current = recorder;
+          recorder.start();
+          setIsRecording(true);
+          setIsPlaying(true);
+        }, 150); // Wait 150ms for animation to start rendering
+      });
 
     } catch (e) {
       console.error(e);
-      alert("录制异常，您的浏览器可能不支持该画布录制API。");
+      showError("录制异常，您的浏览器可能不支持该画布录制API。");
       setIsRecording(false);
     }
-  }, [selectedItem, isRecording]);
+  }, [selectedVersion, isRecording, showError]);
+
+  // Download recorded video
+  const handleDownloadVideo = useCallback(() => {
+    if (!recordedVideoBlob) return;
+    
+    const url = URL.createObjectURL(recordedVideoBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `stitch-export-${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    setShowVideoPreview(false);
+    setRecordedVideoUrl(null);
+    setRecordedVideoBlob(null);
+  }, [recordedVideoBlob]);
+
+  // Cancel and re-record
+  const handleReRecord = useCallback(() => {
+    if (recordedVideoUrl) {
+      URL.revokeObjectURL(recordedVideoUrl);
+    }
+    setShowVideoPreview(false);
+    setRecordedVideoUrl(null);
+    setRecordedVideoBlob(null);
+  }, [recordedVideoUrl]);
 
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900 flex flex-col">
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
+      )}
+
+      {/* Video Preview Modal */}
+      {showVideoPreview && recordedVideoUrl && (
+        <div 
+          className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8 animate-in fade-in duration-200"
+          onClick={handleReRecord}
+        >
+          <div 
+            className="relative w-full max-w-4xl bg-slate-900 rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/20 flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                  <Play className="w-4 h-4 text-emerald-400" />
+                </div>
+                <div>
+                  <h3 className="text-white font-semibold">视频预览</h3>
+                  <p className="text-xs text-slate-400">确认无误后下载，或重新录制</p>
+                </div>
+              </div>
+              <button 
+                onClick={handleReRecord}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 text-white transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Video Player */}
+            <div className="aspect-video bg-black">
+              <video 
+                src={recordedVideoUrl} 
+                controls 
+                autoPlay
+                className="w-full h-full"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/10 bg-slate-950/50">
+              <button 
+                onClick={handleReRecord}
+                className="px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-sm font-medium transition-all flex items-center gap-2"
+              >
+                <RefreshCw className="w-4 h-4" />
+                重新录制
+              </button>
+              <button 
+                onClick={handleDownloadVideo}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" />
+                确认下载
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <GlobalHeader
         showStatus={false}
         status="idle"
@@ -699,9 +1012,14 @@ export default function StitchStudioPage() {
                             
                             {/* Hover Actions */}
                             <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center gap-4 backdrop-blur-sm">
-                              {effect.echartsOption && (
+                              {getCurrentVersion(effect)?.echartsOption && (
                                 <button className="p-3 bg-white/20 hover:bg-white/40 backdrop-blur-md rounded-full text-white transition-all hover:scale-110 border border-white/30" title="包含 AI 生成代码">
                                    <Zap className="w-5 h-5 fill-current" />
+                                </button>
+                              )}
+                              {effect.templateVersionId && (
+                                <button className="p-3 bg-amber-500/30 hover:bg-amber-500/50 backdrop-blur-md rounded-full text-amber-300 transition-all hover:scale-110 border border-amber-400/30" title="已设置为模板">
+                                   <Star className="w-5 h-5 fill-current" />
                                 </button>
                               )}
                               <button 
@@ -781,7 +1099,17 @@ export default function StitchStudioPage() {
                             <div className={`text-sm font-medium truncate ${selectedStudioItemId === item.id ? "text-cyan-800" : "text-slate-700"}`}>
                               {item.title}
                             </div>
-                            <div className="text-[10px] text-slate-400">图层 {idx + 1} {item.echartsOption ? "✨" : ""}</div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-1">
+                              <span>图层 {idx + 1}</span>
+                              <span className="text-slate-300">•</span>
+                              <span className="flex items-center gap-0.5">
+                                <GitBranch className="w-2.5 h-2.5" />
+                                v{getCurrentVersion(item)?.versionNumber || 1}
+                              </span>
+                              {item.templateVersionId && (
+                                <Star className="w-2.5 h-2.5 text-amber-500 fill-current" />
+                              )}
+                            </div>
                           </div>
                           <button 
                             onClick={(e) => handleRemoveFromStudio(item.id, e)}
@@ -809,13 +1137,13 @@ export default function StitchStudioPage() {
                         <span className="text-sm tracking-widest uppercase opacity-40 font-semibold">Canvas Empty</span>
                       </div>
                     ) : (
-                      <div className="w-[85%] aspect-video bg-[#0f172a] rounded-xl border border-white/10 shadow-2xl flex items-center justify-center relative overflow-hidden backdrop-blur-sm z-10">
-                         {selectedItem && selectedItem.echartsOption ? (
+                       <div className="w-[85%] aspect-video bg-[#0f172a] rounded-xl border border-white/10 shadow-2xl flex items-center justify-center relative overflow-hidden backdrop-blur-sm z-10">
+                         {selectedItem && selectedVersion?.echartsOption ? (
                            <ReactECharts
                              ref={echartsRef}
-                             option={selectedItem.echartsOption}
+                             option={selectedVersion.echartsOption}
                              style={{height: '100%', width: '100%'}}
-                             opts={{ renderer: 'canvas' }}
+                             opts={{ renderer: 'canvas', devicePixelRatio: 2 }}
                              notMerge={true}
                            />
                          ) : (
@@ -850,7 +1178,7 @@ export default function StitchStudioPage() {
 
                     <button 
                       onClick={handleToggleRecording}
-                      disabled={!selectedItem?.echartsOption}
+                      disabled={!selectedVersion?.echartsOption}
                       className={`px-5 py-1.5 text-white rounded-lg text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-2 ${
                         isRecording 
                         ? 'bg-slate-700 hover:bg-slate-600 shadow-md shadow-slate-900/20' 
@@ -870,7 +1198,7 @@ export default function StitchStudioPage() {
                   </div>
                 </div>
 
-                {/* Right Panel: Properties / Chat Edit */}
+                {/* Right Panel: Properties / Chat Edit - Split into 2/3 chat history + 1/3 input */}
                 <div className="w-80 bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
                   <div className="p-4 border-b border-slate-100/60 flex items-center justify-between bg-white/40">
                     <div className="flex items-center gap-2">
@@ -879,96 +1207,239 @@ export default function StitchStudioPage() {
                     </div>
                   </div>
 
-                  {selectedItem ? (
+                  {selectedItem && selectedVersion ? (
                     <>
-                      <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar flex flex-col">
-                        <div className="text-center text-xs text-slate-400 my-2">
-                           —— 开始与 AI 对话以修改图表 ——
+                      {/* Version Info Header */}
+                      <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100/60">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <GitBranch className="w-3 h-3" />
+                            <span>版本 {selectedVersion.versionNumber}</span>
+                            <span className="text-slate-300">•</span>
+                            <Clock className="w-3 h-3" />
+                            <span>{new Date(selectedVersion.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <button
+                            onClick={() => setShowVersionPanel(!showVersionPanel)}
+                            className="flex items-center gap-1 text-xs text-cyan-600 hover:text-cyan-700 transition-colors"
+                          >
+                            <History className="w-3 h-3" />
+                            <span>历史</span>
+                            {showVersionPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
                         </div>
-                        {(selectedItem.chatHistory || []).map((msg) => (
-                           <div key={msg.id} className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'} animate-in fade-in slide-in-from-bottom-2`}>
-                             {msg.image && (
-                               <img src={msg.image} alt="upload" className="max-w-full h-auto rounded-lg mb-1 border border-slate-200 shadow-sm" />
-                             )}
-                             <div className={`px-4 py-2.5 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-fuchsia-500 text-white rounded-tr-sm shadow-md shadow-fuchsia-500/20' : 'bg-white text-slate-700 rounded-tl-sm shadow-sm border border-slate-100 whitespace-pre-wrap leading-relaxed'}`}>
-                               {msg.content}
-                             </div>
-                           </div>
-                        ))}
-                        {isChatting && (
-                           <div className="self-start bg-white text-slate-500 px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 text-sm flex items-center gap-2 animate-pulse">
-                              <Loader2 className="w-4 h-4 animate-spin" /> 正在分析与应用修改...
-                           </div>
-                        )}
-                        {/* Auto-scroll target */}
-                        <div className="h-4 shrink-0" />
-                      </div>
-                      
-                      {/* Chat Input */}
-                      <div className="p-3 bg-white/80 border-t border-slate-100/80 m-2 rounded-2xl shadow-sm space-y-2 relative">
-                        {chatImage && (
-                          <div className="relative inline-block m-1">
-                            <img src={chatImage} alt="preview" className="h-16 rounded-lg border border-slate-200" />
-                            <button onClick={() => setChatImage(null)} className="absolute -top-2 -right-2 bg-slate-800 text-white rounded-full p-0.5 shadow-sm hover:scale-110 transition-transform">
-                              <X className="w-3 h-3" />
-                            </button>
+                        {selectedVersion.isTemplate && (
+                          <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1 w-fit">
+                            <Star className="w-3 h-3 fill-current" />
+                            <span>模板</span>
                           </div>
                         )}
-                        <div className="flex items-end gap-2">
-                           <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-400 hover:text-fuchsia-500 hover:bg-fuchsia-50 rounded-xl transition-colors shrink-0">
-                             <ImagePlus className="w-5 h-5" />
-                           </button>
-                           <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleChatImageUpload} />
-                           
-                           <textarea
-                             value={chatInput}
-                             onChange={(e) => {
-                               setChatInput(e.target.value);
-                               // Auto resize
-                               e.target.style.height = 'auto';
-                               e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`;
-                             }}
-                             onKeyDown={(e) => {
+                      </div>
+
+                      {/* Version History Panel */}
+                      {showVersionPanel && selectedItem && (
+                        <div className="border-b border-slate-100/60 bg-white/80 max-h-48 overflow-y-auto">
+                          <div className="p-3 space-y-2">
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">版本历史</div>
+                            {selectedItem.versions
+                              .sort((a, b) => b.createdAt - a.createdAt)
+                              .map((version) => (
+                                <div 
+                                  key={version.id}
+                                  className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                                    selectedVersion.id === version.id 
+                                      ? 'bg-cyan-50 border-cyan-200' 
+                                      : 'bg-white border-slate-100 hover:border-cyan-200 hover:bg-slate-50'
+                                  }`}
+                                  onClick={() => handleSwitchVersion(selectedItem.id, version.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${
+                                      selectedVersion.id === version.id 
+                                        ? 'bg-cyan-500 text-white' 
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                      v{version.versionNumber}
+                                    </div>
+                                    <div>
+                                      <div className="text-[11px] font-medium text-slate-700 flex items-center gap-1">
+                                        版本 {version.versionNumber}
+                                        {version.isTemplate && (
+                                          <Star className="w-3 h-3 text-amber-500 fill-current" />
+                                        )}
+                                      </div>
+                                      <div className="text-[9px] text-slate-400">
+                                        {new Date(version.createdAt).toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleTemplate(selectedItem.id, version.id);
+                                      }}
+                                      className={`p-1 rounded transition-colors ${
+                                        version.isTemplate 
+                                          ? 'text-amber-500 bg-amber-50 hover:bg-amber-100' 
+                                          : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'
+                                      }`}
+                                      title={version.isTemplate ? "取消模板" : "设为模板"}
+                                    >
+                                      <Star className={`w-3.5 h-3.5 ${version.isTemplate ? 'fill-current' : ''}`} />
+                                    </button>
+                                    {selectedVersion.id !== version.id && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRevertToVersion(selectedItem.id, version.id);
+                                        }}
+                                        className="p-1 rounded text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition-colors"
+                                        title="回溯到此版本"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Chat History - takes 2/3 */}
+                      <div className="flex-[2] overflow-y-auto p-4 space-y-4 custom-scrollbar flex flex-col min-h-0">
+                        {(selectedVersion.chatHistory || []).length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center text-center">
+                            <MessageSquare className="w-10 h-10 text-slate-200 mb-3" />
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                              开始与 AI 对话以修改图表<br/>
+                              <span className="text-[10px] text-slate-300 mt-1 block">支持粘贴图片作为参考</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            {(selectedVersion.chatHistory || []).map((msg: ChatMessage) => (
+                              <div key={msg.id} className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'} animate-in fade-in slide-in-from-bottom-2`}>
+                                {msg.image && (
+                                  <div 
+                                    className="relative group cursor-pointer mb-1"
+                                    onClick={() => setPreviewImage(msg.image!)}
+                                  >
+                                    <img src={msg.image} alt="upload" className="max-w-[180px] h-auto rounded-lg border border-slate-200 shadow-sm group-hover:shadow-md transition-shadow" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-lg transition-colors flex items-center justify-center">
+                                      <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                    </div>
+                                  </div>
+                                )}
+                                <div className={`px-4 py-2.5 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-fuchsia-500 text-white rounded-tr-sm shadow-md shadow-fuchsia-500/20' : 'bg-white text-slate-700 rounded-tl-sm shadow-sm border border-slate-100 whitespace-pre-wrap leading-relaxed'}`}>
+                                  {msg.content}
+                                </div>
+                              </div>
+                            ))}
+                            {isChatting && (
+                              <div className="self-start bg-white text-slate-500 px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 text-sm flex items-center gap-2 animate-pulse">
+                                <Loader2 className="w-4 h-4 animate-spin" /> 正在分析与应用修改...
+                              </div>
+                            )}
+                          </>
+                        )}
+                        <div className="h-2 shrink-0" />
+                      </div>
+                      
+                      {/* Chat Input Area - takes 1/3 */}
+                      <div className="flex-[1] flex flex-col border-t border-slate-100/60 bg-white/60">
+                        {/* Attached Image Preview */}
+                        <div className="px-3 pt-2">
+                          {chatImage && (
+                            <div className="relative inline-block group">
+                              <img 
+                                src={chatImage} 
+                                alt="preview" 
+                                className="h-14 rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" 
+                                onClick={() => setPreviewImage(chatImage)}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center pointer-events-none">
+                                <ZoomIn className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <button 
+                                onClick={() => setChatImage(null)} 
+                                className="absolute -top-1.5 -right-1.5 bg-slate-800 text-white rounded-full p-0.5 shadow-sm hover:bg-red-500 transition-colors hover:scale-110"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Input Controls */}
+                        <div className="flex-1 flex flex-col p-2 gap-1.5">
+                          <div className="flex items-end gap-1.5 flex-1">
+                            <button 
+                              onClick={() => fileInputRef.current?.click()} 
+                              className="p-1.5 text-slate-400 hover:text-fuchsia-500 hover:bg-fuchsia-50 rounded-lg transition-colors shrink-0"
+                              title="上传图片"
+                            >
+                              <ImagePlus className="w-4 h-4" />
+                            </button>
+                            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleChatImageUpload} />
+                            
+                            <textarea
+                              value={chatInput}
+                              onChange={(e) => {
+                                setChatInput(e.target.value);
+                                e.target.style.height = 'auto';
+                                e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
+                              }}
+                              onKeyDown={(e) => {
                                 if (e.key === 'Enter' && !e.shiftKey) {
                                   e.preventDefault();
                                   handleSendChat();
                                 }
-                             }}
-                             onPaste={(e) => {
-                               // Support Ctrl+V / Cmd+V image paste from clipboard
-                               const items = Array.from(e.clipboardData.items);
-                               const imageItem = items.find(item => item.type.startsWith("image/"));
-                               if (imageItem) {
-                                 e.preventDefault();
-                                 const file = imageItem.getAsFile();
-                                 if (!file) return;
-                                 const reader = new FileReader();
-                                 reader.onload = (ev) => {
-                                   const base64 = ev.target?.result as string;
-                                   if (base64) setChatImage(base64);
-                                 };
-                                 reader.readAsDataURL(file);
-                               }
-                             }}
-                             placeholder="输入修改指令... (可直接 Ctrl+V 粘贴图片)"
-                             className="flex-1 min-h-[40px] p-2 bg-transparent text-sm resize-none focus:outline-none placeholder:text-slate-400 custom-scrollbar overflow-y-auto"
-                             rows={1}
-                             style={{ height: '40px' }}
-                           />
-                           
-                           <button 
-                             onClick={handleSendChat}
-                             disabled={(!chatInput.trim() && !chatImage) || isChatting}
-                             className="p-2 bg-fuchsia-500 hover:bg-fuchsia-600 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-xl transition-colors shrink-0 shadow-sm"
-                           >
-                             <Send className="w-4 h-4" />
-                           </button>
+                              }}
+                              onPaste={(e) => {
+                                const items = Array.from(e.clipboardData.items);
+                                const imageItem = items.find(item => item.type.startsWith("image/"));
+                                if (imageItem) {
+                                  e.preventDefault();
+                                  const file = imageItem.getAsFile();
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const base64 = ev.target?.result as string;
+                                    if (base64) setChatImage(base64);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              placeholder="输入修改指令..."
+                              className="flex-1 min-h-[32px] max-h-[100px] p-1.5 bg-white/80 border border-slate-200/60 rounded-lg text-xs resize-none focus:outline-none focus:ring-1 focus:ring-fuchsia-500/30 focus:border-fuchsia-300 placeholder:text-slate-400 custom-scrollbar overflow-y-auto"
+                              rows={1}
+                              style={{ height: '32px' }}
+                            />
+                            
+                            <button 
+                              onClick={handleSendChat}
+                              disabled={(!chatInput.trim() && !chatImage) || isChatting}
+                              className="p-1.5 bg-fuchsia-500 hover:bg-fuchsia-600 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-lg transition-colors shrink-0 shadow-sm"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[9px] text-slate-300">Ctrl+V 粘贴图片</span>
+                            <span className="text-[9px] text-slate-300">Enter 发送</span>
+                          </div>
                         </div>
                       </div>
                     </>
                   ) : (
-                    <div className="flex-1 flex items-center justify-center text-center">
-                      <p className="text-sm text-slate-400">选择图层以编辑</p>
+                    <div className="flex-1 flex items-center justify-center text-center px-6">
+                      <div>
+                        <Upload className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                        <p className="text-sm text-slate-400 font-medium">选择图层以编辑</p>
+                        <p className="text-xs text-slate-300 mt-1">从左侧图层列表中选择一个特效</p>
+                      </div>
                     </div>
                   )}
                 </div>

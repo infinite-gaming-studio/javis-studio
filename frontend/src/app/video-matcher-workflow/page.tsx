@@ -10,6 +10,7 @@ import {
 import { getSettings } from "@/lib/api";
 import GlobalHeader from "@/components/GlobalHeader";
 import SettingsModal from "@/components/SettingsModal";
+import { useNotification } from "@/lib/NotificationContext";
 
 type MediaType = "video" | "photo";
 type WorkflowStep = "input" | "segmentation" | "keyword_review" | "media_search" | "media_selection" | "export";
@@ -48,6 +49,8 @@ type SegmentWithMedia = {
 };
 
 export default function VideoMatcherWorkflowPage() {
+  const { showToast, showError } = useNotification();
+  
   // ═══════════════════════════════════════════════════════════════════════════
   // 状态管理
   // ═══════════════════════════════════════════════════════════════════════════
@@ -171,7 +174,7 @@ export default function VideoMatcherWorkflowPage() {
       setCurrentStep("media_selection");
       
     } catch (error: any) {
-      alert(`搜索失败: ${error.message}`);
+      showError(`搜索失败: ${error.message}`);
     } finally {
       setIsLoading(false);
       setLoadingMessage("");
@@ -231,7 +234,7 @@ export default function VideoMatcherWorkflowPage() {
       setEditingSegmentId(null);
       
     } catch (error: any) {
-      alert(`重新搜索失败: ${error.message}`);
+      showError(`重新搜索失败: ${error.message}`);
     } finally {
       setReSearchingId(null);
     }
@@ -553,7 +556,7 @@ export default function VideoMatcherWorkflowPage() {
                         返回修改关键词
                       </button>
                       <button
-                        onClick={() => alert("导出功能开发中...")}
+                        onClick={() => showToast("导出功能开发中...", "info")}
                         className="px-4 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5"
                       >
                         <Download className="w-3.5 h-3.5" />

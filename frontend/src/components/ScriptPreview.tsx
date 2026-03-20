@@ -1,6 +1,7 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
 import { ScriptSegment } from "@/lib/api";
+import { useNotification } from "@/lib/NotificationContext";
 import {
     FileText,
     Smile,
@@ -113,6 +114,8 @@ function smartSplitText(text: string, targetSegments: number | null, maxCharsPer
 }
 
 export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false, currentPlayingIndex }: Props) {
+    const { showConfirm } = useNotification();
+    
     const [manualCount, setManualCount] = useState<number>(1);
     const [expandedSegment, setExpandedSegment] = useState<number | null>(null);
     const [showSplitModal, setShowSplitModal] = useState(false);
@@ -266,9 +269,15 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
     };
 
     const clearAllSegments = () => {
-        if (confirm("确定要清空所有分段吗？")) {
-            onChange([]);
-        }
+        showConfirm({
+            title: "清空分段",
+            message: "确定要清空所有分段吗？",
+            confirmText: "清空",
+            cancelText: "取消",
+            onConfirm: () => {
+                onChange([]);
+            }
+        });
     };
 
     // 智能分割所有段落

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useNotification } from "@/lib/NotificationContext";
 
 export interface SettingsConfig {
     llmApiUrl: string;
@@ -45,6 +46,8 @@ interface Props {
 }
 
 export default function SettingsModal({ isOpen, onClose }: Props) {
+    const { showError } = useNotification();
+    
     const [config, setConfig] = useState<SettingsConfig>(DEFAULT_CONFIG);
     const [isMounted, setIsMounted] = useState(false);
     const [showModels, setShowModels] = useState(false);
@@ -456,7 +459,7 @@ export default function SettingsModal({ isOpen, onClose }: Props) {
                 const importedConfig = JSON.parse(event.target?.result as string);
                 setConfig({ ...DEFAULT_CONFIG, ...importedConfig });
             } catch {
-                alert("导入配置失败，请检查文件格式是否正确");
+                showError("导入配置失败，请检查文件格式是否正确");
             }
         };
         reader.readAsText(file);
