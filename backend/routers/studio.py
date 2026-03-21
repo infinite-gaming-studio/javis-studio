@@ -143,3 +143,64 @@ async def serve_audio(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Audio file not found")
     media_type = "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
     return FileResponse(str(audio_path), media_type=media_type)
+
+import tempfile
+import subprocess
+from fastapi.background import BackgroundTasks
+
+@router.post("/video/convert")
+async def convert_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
+    """Convert WebM video to MP4 using ffmpeg."""
+    if not file.filename.endswith(".webm"):
+        raise HTTPException(status_code=400, detail="Only .webm files are supported")
+
+    # Create temporary directory for the conversion
+    temp_dir = tempfile.mkdtemp()
+    input_path = os.path.join(temp_dir, "input.webm")
+    output_path = os.path.join(temp_dir, "output.mp4")
+
+    try:
+        # Save uploaded file
+        content = await file.read()
+        with open(input_path, "wb") as f:
+            f.write(content)
+
+        # Run ffmpeg conversion
+        # Use simple copy if possible, but libx264 ensures maximum compatibility for browser-recorded WebMs
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i", input_path,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-pix_fmt", "yuv420p",
+            output_path
+        ]
+        
+        process = subprocess.run(cmd, capture_output=True, text=True)
+        if process.returncode != 0:
+            logger.error(f"FFmpeg conversion failed: {process.stderr}")
+            raise HTTPException(status_code=500, detail="Video conversion failed")
+
+        # Cleanup background task
+        def cleanup(dir_path):
+            import shutil
+            try:
+                shutil.rmtree(dir_path)
+            except Exception as e:
+                logger.error(f"Error cleaning up {dir_path}: {e}")
+
+        background_tasks.add_task(cleanup, temp_dir)
+
+        return FileResponse(
+            path=output_path,
+            media_type="video/mp4",
+            filename=file.filename.replace(".webm", ".mp4")
+        )
+
+    except Exception as e:
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        logger.exception("Video conversion error")
+        raise HTTPException(status_code=500, detail=str(e))

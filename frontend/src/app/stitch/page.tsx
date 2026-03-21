@@ -56,6 +56,7 @@ interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   image?: string;
+  isError?: boolean;
 }
 
 interface EffectVersion {
@@ -229,6 +230,7 @@ export default function StitchStudioPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState("全部");
   const [effectsPool, setEffectsPool] = useState<EffectItem[]>(INITIAL_MOCK_EFFECTS);
+  const [previewEffectId, setPreviewEffectId] = useState<string | null>(null);
   
   // AI Generate States
   const [aiPrompt, setAiPrompt] = useState("");
@@ -242,6 +244,7 @@ export default function StitchStudioPage() {
   const [recordedVideoBlob, setRecordedVideoBlob] = useState<Blob | null>(null);
   const [showVideoPreview, setShowVideoPreview] = useState(false);
   const [showVersionPanel, setShowVersionPanel] = useState(false);
+  const [isConverting, setIsConverting] = useState(false);
 
   // Persistence Loading Effect
   useEffect(() => {
@@ -271,23 +274,35 @@ export default function StitchStudioPage() {
     }
   }, []);
 
+  // Helper to strip large assets (like base64 images) before saving to local storage
+  const stripLargeDataForStorage = (items: EffectItem[]) => {
+    return items.map(item => ({
+      ...item,
+      icon: null,
+      iconName: getIconName(item.icon),
+      versions: item.versions.map(v => ({
+        ...v,
+        chatHistory: v.chatHistory.map(msg => ({
+          ...msg,
+          image: msg.image ? "[IMAGE_ATTACHED]" : undefined
+        }))
+      }))
+    }));
+  };
+
   // Persistence Saving Effects
   useEffect(() => {
-    const toSave = effectsPool.map(item => ({
-      ...item,
-      icon: null, // Don't serialize React node
-      iconName: getIconName(item.icon)
-    }));
-    localStorage.setItem("stitch_effects_pool", JSON.stringify(toSave));
+    try {
+      const toSave = stripLargeDataForStorage(effectsPool);
+      localStorage.setItem("stitch_effects_pool", JSON.stringify(toSave));
+    } catch (e) { console.error("Failed to save effects pool to local storage", e); }
   }, [effectsPool]);
 
   useEffect(() => {
-    const toSave = studioItems.map(item => ({
-      ...item,
-      icon: null,
-      iconName: getIconName(item.icon)
-    }));
-    localStorage.setItem("stitch_studio_items", JSON.stringify(toSave));
+    try {
+      const toSave = stripLargeDataForStorage(studioItems);
+      localStorage.setItem("stitch_studio_items", JSON.stringify(toSave));
+    } catch (e) { console.error("Failed to save studio items to local storage", e); }
   }, [studioItems]);
 
   // Chat States
@@ -296,6 +311,7 @@ export default function StitchStudioPage() {
   const [isChatting, setIsChatting] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const echartsRef = useRef<any>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -362,14 +378,14 @@ export default function StitchStudioPage() {
 
   // Version management functions
   const handleSwitchVersion = (itemId: string, versionId: string) => {
-    setStudioItems(prev => prev.map(item => {
+    setEffectsPool(prev => prev.map(item => {
       if (item.id !== itemId) return item;
       return { ...item, currentVersionId: versionId };
     }));
   };
 
   const handleToggleTemplate = (itemId: string, versionId: string) => {
-    setStudioItems(prev => prev.map(item => {
+    setEffectsPool(prev => prev.map(item => {
       if (item.id !== itemId) return item;
       
       const isCurrentlyTemplate = item.templateVersionId === versionId;
@@ -387,7 +403,7 @@ export default function StitchStudioPage() {
   };
 
   const handleRevertToVersion = (itemId: string, versionId: string) => {
-    const item = studioItems.find(i => i.id === itemId);
+    const item = effectsPool.find(i => i.id === itemId);
     if (!item) return;
     
     const targetVersion = item.versions.find(v => v.id === versionId);
@@ -395,7 +411,7 @@ export default function StitchStudioPage() {
     
     // Create new version based on target version
     const newVersion = createNewVersion(item, targetVersion.echartsOption, [...targetVersion.chatHistory]);
-    addVersionToItem(itemId, newVersion, setStudioItems);
+    addVersionToItem(itemId, newVersion, setEffectsPool);
   };
 
   const handleAddToStudio = (item: EffectItem) => {
@@ -419,7 +435,10 @@ export default function StitchStudioPage() {
     if (selectedStudioItemId === id) setSelectedStudioItemId(null);
   };
 
-  const selectedItem = studioItems.find(item => item.id === selectedStudioItemId);
+  const isPreviewMode = activeTab === "hub" && previewEffectId !== null;
+  const selectedItem = isPreviewMode
+    ? effectsPool.find(item => item.id === previewEffectId)
+    : studioItems.find(item => item.id === selectedStudioItemId);
   const selectedVersion = selectedItem ? getCurrentVersion(selectedItem) : undefined;
 
   // AI Generation Function
@@ -525,7 +544,7 @@ export default function StitchStudioPage() {
     const updatedHistory = [...currentHistory, newUserMsg];
     
     // Optimistic update - update current version's chat history
-    setStudioItems(prev => prev.map(item => {
+    setEffectsPool(prev => prev.map(item => {
       if (item.id !== selectedItem.id) return item;
       return {
         ...item,
@@ -598,10 +617,29 @@ export default function StitchStudioPage() {
 
       // Create new version with updated config and chat history
       const newVersion = createNewVersion(selectedItem, parsedOption, [...updatedHistory, newAsstMsg]);
-      addVersionToItem(selectedItem.id, newVersion, setStudioItems);
+      addVersionToItem(selectedItem.id, newVersion, setEffectsPool);
 
     } catch (e: any) {
       showError(`编辑出错: ${e.message}`);
+      
+      const errorMsg: ChatMessage = {
+        id: `msg-${Date.now() + 1}`,
+        role: "assistant",
+        content: `编辑出错: ${e.message}`,
+        isError: true
+      };
+
+      setEffectsPool(prev => prev.map(item => {
+        if (item.id !== selectedItem.id) return item;
+        return {
+          ...item,
+          versions: item.versions.map(v => 
+            v.id === item.currentVersionId 
+              ? { ...v, chatHistory: [...updatedHistory, errorMsg] }
+              : v
+          )
+        };
+      }));
     } finally {
       setIsChatting(false);
     }
@@ -707,23 +745,45 @@ export default function StitchStudioPage() {
     }
   }, [selectedVersion, isRecording, showError]);
 
-  // Download recorded video
-  const handleDownloadVideo = useCallback(() => {
-    if (!recordedVideoBlob) return;
+  const handleDownloadVideo = useCallback(async () => {
+    if (!recordedVideoBlob || isConverting) return;
+    setIsConverting(true);
     
-    const url = URL.createObjectURL(recordedVideoBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `stitch-export-${Date.now()}.webm`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    setShowVideoPreview(false);
-    setRecordedVideoUrl(null);
-    setRecordedVideoBlob(null);
-  }, [recordedVideoBlob]);
+    try {
+      showSuccess("正在转换视频格式，请稍候...");
+      const formData = new FormData();
+      formData.append('file', recordedVideoBlob, 'video.webm');
+
+      // Use relative path to let Next.js proxy it to the backend and avoid CORS
+      const res = await fetch("/api/studio/video/convert", {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        throw new Error("视频格式转换失败");
+      }
+
+      const mp4Blob = await res.blob();
+      const url = URL.createObjectURL(mp4Blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `stitch-export-${Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      
+      showSuccess("视频已成功导出为 MP4 格式！");
+      setShowVideoPreview(false);
+      setRecordedVideoUrl(null);
+      setRecordedVideoBlob(null);
+    } catch (e: any) {
+      showError(`导出失败: ${e.message}`);
+    } finally {
+      setIsConverting(false);
+    }
+  }, [recordedVideoBlob, isConverting, showError, showSuccess]);
 
   // Cancel and re-record
   const handleReRecord = useCallback(() => {
@@ -735,9 +795,17 @@ export default function StitchStudioPage() {
     setRecordedVideoBlob(null);
   }, [recordedVideoUrl]);
 
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [selectedVersion?.chatHistory, isChatting]);
+
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900 flex flex-col">
+    <div className="relative min-h-screen bg-gradient-to-br from-[#f8fafc] via-[#f1f5f9] to-[#e2e8f0] text-slate-800 font-sans selection:bg-cyan-100 selection:text-cyan-900 flex flex-col">
       {/* Image Preview Modal */}
       {previewImage && (
         <ImagePreviewModal src={previewImage} onClose={() => setPreviewImage(null)} />
@@ -793,10 +861,11 @@ export default function StitchStudioPage() {
               </button>
               <button 
                 onClick={handleDownloadVideo}
-                className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2"
+                disabled={isConverting}
+                className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-400 hover:to-green-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Download className="w-4 h-4" />
-                确认下载
+                {isConverting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                {isConverting ? "处理中..." : "确认下载"}
               </button>
             </div>
           </div>
@@ -875,7 +944,322 @@ export default function StitchStudioPage() {
           
           {/* ======================= HUB TAB ======================= */}
           {activeTab === "hub" && (
-            <div className="absolute inset-0 flex flex-row gap-6 animate-in fade-in zoom-in-95 duration-400">
+            previewEffectId ? (
+              <div className="absolute inset-0 flex flex-row gap-4 animate-in fade-in zoom-in-95 duration-400 z-50 bg-slate-900/50 p-2 rounded-3xl">
+                {/* Center Canvas for Preview */}
+                <div className="flex-1 bg-slate-900 rounded-3xl border-4 border-slate-800 shadow-2xl flex flex-col overflow-hidden relative group">
+                  {/* Preview Header */}
+                  <div className="h-14 bg-slate-950/80 backdrop-blur-md flex items-center justify-between px-6 z-20 border-b border-white/10">
+                    <button 
+                      onClick={() => setPreviewEffectId(null)}
+                      className="flex items-center gap-2 text-slate-300 hover:text-white transition-colors text-sm font-semibold"
+                    >
+                       <X className="w-5 h-5" /> 返回 Hub
+                    </button>
+                    {selectedItem && (
+                      <button 
+                         onClick={() => { handleAddToStudio(selectedItem); setPreviewEffectId(null); }}
+                         className="px-4 py-1.5 bg-fuchsia-500 hover:bg-fuchsia-600 active:bg-fuchsia-700 text-white rounded-lg font-bold text-sm transition-all shadow-md flex items-center gap-2"
+                      >
+                         <Plus className="w-4 h-4" /> 加入 Studio
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Preview Canvas */}
+                  <div className="flex-1 relative overflow-hidden flex items-center justify-center bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-slate-800 to-slate-950">
+                    <div className="absolute inset-0 opacity-10 pointer-events-none" style={{ backgroundImage: "linear-gradient(to right, #4f4f4f 1px, transparent 1px), linear-gradient(to bottom, #4f4f4f 1px, transparent 1px)", backgroundSize: "40px 40px" }} />
+                     <div className="w-[85%] aspect-video bg-[#0f172a] rounded-xl border border-white/10 shadow-2xl flex items-center justify-center relative overflow-hidden backdrop-blur-sm z-10">
+                        {selectedItem && selectedVersion?.echartsOption ? (
+                          <ReactECharts
+                             option={selectedVersion.echartsOption}
+                             style={{height: '100%', width: '100%'}}
+                             opts={{ renderer: 'canvas', devicePixelRatio: 2 }}
+                             notMerge={true}
+                           />
+                        ) : (
+                          <div className="text-slate-500">无法加载渲染代码</div>
+                        )}
+                     </div>
+                  </div>
+                </div>
+
+                {/* Right Panel: Properties / Chat Edit - wrapped for rainbow glow */}
+                <div className={`ai-glow-wrapper flex-shrink-0 ${isChatting ? 'active' : ''}`}>
+                <div className="w-80 bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
+                  <div className="p-4 border-b border-slate-100/60 flex items-center justify-between bg-white/40">
+                    <div className="flex items-center gap-2">
+                       <MessageSquare className="w-4 h-4 text-fuchsia-500" />
+                       <h3 className="font-semibold text-slate-800 text-sm">AI 持续编辑</h3>
+                    </div>
+                  </div>
+
+                  {selectedItem && selectedVersion ? (
+                    <>
+                      {/* Version Info Header */}
+                      <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100/60">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs text-slate-500">
+                            <GitBranch className="w-3 h-3" />
+                            <span>版本 {selectedVersion.versionNumber}</span>
+                            <span className="text-slate-300">•</span>
+                            <Clock className="w-3 h-3" />
+                            <span>{new Date(selectedVersion.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <button
+                            onClick={() => setShowVersionPanel(!showVersionPanel)}
+                            className="flex items-center gap-1 text-xs text-cyan-600 hover:text-cyan-700 transition-colors"
+                          >
+                            <History className="w-3 h-3" />
+                            <span>历史</span>
+                            {showVersionPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </button>
+                        </div>
+                        {selectedVersion.isTemplate && (
+                          <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1 w-fit">
+                            <Star className="w-3 h-3 fill-current" />
+                            <span>模板</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Version History Panel */}
+                      {showVersionPanel && selectedItem && (
+                        <div className="border-b border-slate-100/60 bg-white/80 max-h-48 overflow-y-auto">
+                          <div className="p-3 space-y-2">
+                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">版本历史</div>
+                            {selectedItem.versions
+                              .sort((a, b) => b.createdAt - a.createdAt)
+                              .map((version) => (
+                                <div 
+                                  key={version.id}
+                                  className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
+                                    selectedVersion.id === version.id 
+                                      ? 'bg-cyan-50 border-cyan-200' 
+                                      : 'bg-white border-slate-100 hover:border-cyan-200 hover:bg-slate-50'
+                                  }`}
+                                  onClick={() => handleSwitchVersion(selectedItem.id, version.id)}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${
+                                      selectedVersion.id === version.id 
+                                        ? 'bg-cyan-500 text-white' 
+                                        : 'bg-slate-100 text-slate-600'
+                                    }`}>
+                                      v{version.versionNumber}
+                                    </div>
+                                    <div>
+                                      <div className="text-[11px] font-medium text-slate-700 flex items-center gap-1">
+                                        版本 {version.versionNumber}
+                                        {version.isTemplate && (
+                                          <Star className="w-3 h-3 text-amber-500 fill-current" />
+                                        )}
+                                      </div>
+                                      <div className="text-[9px] text-slate-400">
+                                        {new Date(version.createdAt).toLocaleString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleToggleTemplate(selectedItem.id, version.id);
+                                      }}
+                                      className={`p-1 rounded transition-colors ${
+                                        version.isTemplate 
+                                          ? 'text-amber-500 bg-amber-50 hover:bg-amber-100' 
+                                          : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'
+                                      }`}
+                                      title={version.isTemplate ? "取消模板" : "设为模板"}
+                                    >
+                                      <Star className={`w-3.5 h-3.5 ${version.isTemplate ? 'fill-current' : ''}`} />
+                                    </button>
+                                    {selectedVersion.id !== version.id && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleRevertToVersion(selectedItem.id, version.id);
+                                        }}
+                                        className="p-1 rounded text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition-colors"
+                                        title="回溯到此版本"
+                                      >
+                                        <Copy className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Chat History - takes 2/3 */}
+                      <div className="flex-[2] overflow-y-auto p-4 space-y-4 custom-scrollbar flex flex-col min-h-0">
+                        {(selectedVersion.chatHistory || []).length === 0 ? (
+                          <div className="flex-1 flex flex-col items-center justify-center text-center">
+                            <MessageSquare className="w-10 h-10 text-slate-200 mb-3" />
+                            <p className="text-xs text-slate-400 leading-relaxed">
+                              开始与 AI 对话以修改图表<br/>
+                              <span className="text-[10px] text-slate-300 mt-1 block">支持粘贴图片作为参考</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <>
+                            {(selectedVersion.chatHistory || []).map((msg: ChatMessage, index: number) => (
+                              <div key={msg.id} className={`flex flex-col max-w-[85%] mb-2 ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'} animate-in fade-in slide-in-from-bottom-2`}>
+                                {msg.image && (
+                                  msg.image === "[IMAGE_ATTACHED]" ? (
+                                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-500 rounded-lg border border-slate-200 text-xs w-fit mb-1">
+                                      <ImagePlus className="w-3.5 h-3.5" />
+                                      <span>历史图片已清理以节省存储空间</span>
+                                    </div>
+                                  ) : (
+                                    <div 
+                                      className="relative group cursor-pointer mb-1"
+                                      onClick={() => setPreviewImage(msg.image!)}
+                                    >
+                                      <img src={msg.image} alt="upload" className="max-w-[180px] h-auto rounded-lg border border-slate-200 shadow-sm group-hover:shadow-md transition-shadow" />
+                                      <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-lg transition-colors flex items-center justify-center">
+                                        <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                      </div>
+                                    </div>
+                                  )
+                                )}
+                                <div className={`px-4 py-2.5 rounded-2xl text-sm shadow-sm border whitespace-pre-wrap leading-relaxed ${msg.role === 'user' ? 'bg-fuchsia-500 text-white rounded-tr-sm border-transparent shadow-fuchsia-500/20' : (msg.isError ? 'bg-rose-50 border-rose-200 text-rose-600 rounded-tl-sm' : 'bg-white text-slate-700 border-slate-100 rounded-tl-sm')}`}>
+                                  {msg.content}
+                                </div>
+                                {msg.isError && (
+                                  <button
+                                    onClick={() => {
+                                      const prevMsg = selectedVersion.chatHistory[index - 1];
+                                      if (prevMsg && prevMsg.role === 'user') {
+                                        setChatInput(prevMsg.content);
+                                        if (prevMsg.image && prevMsg.image !== "[IMAGE_ATTACHED]") {
+                                          setChatImage(prevMsg.image);
+                                        }
+                                        // Auto-scroll input view or calculate height naturally
+                                      }
+                                    }}
+                                    className="mt-1.5 ml-2 flex items-center gap-1.5 text-xs text-rose-500 hover:text-rose-600 hover:bg-rose-50 transition-colors bg-white/60 px-3 py-1.5 rounded-full border border-rose-200 shadow-sm"
+                                  >
+                                    <RefreshCw className="w-3.5 h-3.5" /> 恢复输入内容并重试
+                                  </button>
+                                )}
+                              </div>
+                            ))}
+                            {isChatting && (
+                              <div className="self-start bg-white text-slate-500 px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 text-sm flex items-center gap-2 animate-pulse">
+                                <Loader2 className="w-4 h-4 animate-spin" /> 正在分析与应用修改...
+                              </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                          </>
+                        )}
+                        <div className="h-2 shrink-0" />
+                      </div>
+                      
+                      {/* Chat Input Area - takes 1/3 */}
+                      <div className="flex-[1] flex flex-col border-t border-slate-100/60 bg-white/60">
+                        {/* Attached Image Preview */}
+                        <div className="px-3 pt-2">
+                          {chatImage && (
+                            <div className="relative inline-block group">
+                              <img 
+                                src={chatImage} 
+                                alt="preview" 
+                                className="h-14 rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" 
+                                onClick={() => setPreviewImage(chatImage)}
+                              />
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center pointer-events-none">
+                                <ZoomIn className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </div>
+                              <button 
+                                onClick={() => setChatImage(null)} 
+                                className="absolute -top-1.5 -right-1.5 bg-slate-800 text-white rounded-full p-0.5 shadow-sm hover:bg-red-500 transition-colors hover:scale-110"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        
+                        {/* Input Controls */}
+                        <div className="flex-1 flex flex-col p-2 gap-1.5">
+                          <div className="flex items-end gap-1.5 flex-1">
+                            <button 
+                              onClick={() => fileInputRef.current?.click()} 
+                              className="p-1.5 text-slate-400 hover:text-fuchsia-500 hover:bg-fuchsia-50 rounded-lg transition-colors shrink-0"
+                              title="上传图片"
+                            >
+                              <ImagePlus className="w-4 h-4" />
+                            </button>
+                            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleChatImageUpload} />
+                            
+                            <textarea
+                              value={chatInput}
+                              onChange={(e) => {
+                                setChatInput(e.target.value);
+                                e.target.style.height = 'auto';
+                                e.target.style.height = `${Math.min(e.target.scrollHeight, 250)}px`;
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSendChat();
+                                  e.currentTarget.style.height = 'auto'; // Reset height on send
+                                }
+                              }}
+                              onPaste={(e) => {
+                                const items = Array.from(e.clipboardData.items);
+                                const imageItem = items.find(item => item.type.startsWith("image/"));
+                                if (imageItem) {
+                                  e.preventDefault();
+                                  const file = imageItem.getAsFile();
+                                  if (!file) return;
+                                  const reader = new FileReader();
+                                  reader.onload = (ev) => {
+                                    const base64 = ev.target?.result as string;
+                                    if (base64) setChatImage(base64);
+                                  };
+                                  reader.readAsDataURL(file);
+                                }
+                              }}
+                              placeholder="输入修改指令... (Shift + Enter 换行)"
+                              className="flex-1 min-h-[36px] max-h-[33vh] p-2 bg-white/80 border border-slate-200/60 rounded-lg text-xs resize-none focus:outline-none focus:ring-1 focus:ring-fuchsia-500/30 focus:border-fuchsia-300 placeholder:text-slate-400 custom-scrollbar overflow-y-auto"
+                              rows={1}
+                            />
+                            
+                            <button 
+                              onClick={handleSendChat}
+                              disabled={(!chatInput.trim() && !chatImage) || isChatting}
+                              className="p-1.5 bg-fuchsia-500 hover:bg-fuchsia-600 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-lg transition-colors shrink-0 shadow-sm"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between px-1">
+                            <span className="text-[9px] text-slate-300">Ctrl+V 粘贴图片</span>
+                            <span className="text-[9px] text-slate-300">Enter 发送</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center text-center px-6">
+                      <div>
+                        <Upload className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                        <p className="text-sm text-slate-400 font-medium">选择图层以编辑</p>
+                        <p className="text-xs text-slate-300 mt-1">从左侧图层列表中选择一个特效</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+
+              </div>
+            ) : (
+<div className="absolute inset-0 flex flex-row gap-6 animate-in fade-in zoom-in-95 duration-400">
               
               {/* Left Panel: AI Generator (1/3 width) */}
               <div className="w-1/3 min-w-[320px] max-w-[400px] bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
@@ -998,7 +1382,7 @@ export default function StitchStudioPage() {
                       {filteredEffects.map((effect, idx) => (
                         <div 
                           key={effect.id} 
-                          onClick={() => handleAddToStudio(effect)}
+                          onClick={() => setPreviewEffectId(effect.id)}
                           className="group bg-white rounded-2xl border border-white/80 shadow-sm hover:shadow-2xl hover:shadow-slate-300/40 hover:-translate-y-1.5 transition-all duration-300 overflow-hidden flex flex-col ring-1 ring-slate-100 cursor-pointer"
                         >
                           {/* Thumbnail Simulation */}
@@ -1023,7 +1407,7 @@ export default function StitchStudioPage() {
                                 </button>
                               )}
                               <button 
-                                onClick={() => handleAddToStudio(effect)}
+                                onClick={(e) => { e.stopPropagation(); handleAddToStudio(effect); }}
                                 className="px-5 py-3 bg-fuchsia-500 hover:bg-fuchsia-600 active:bg-fuchsia-700 text-white rounded-full font-bold text-sm transition-all hover:scale-105 active:scale-95 shadow-lg shadow-fuchsia-500/30 flex items-center gap-2 border border-fuchsia-400"
                               >
                                 <Plus className="w-4 h-4" /> 加入 Studio
@@ -1049,6 +1433,7 @@ export default function StitchStudioPage() {
                 </div>
               </div>
             </div>
+            )
           )}
 
           {/* ======================= STUDIO TAB ======================= */}
@@ -1196,252 +1581,6 @@ export default function StitchStudioPage() {
                       )}
                     </button>
                   </div>
-                </div>
-
-                {/* Right Panel: Properties / Chat Edit - Split into 2/3 chat history + 1/3 input */}
-                <div className="w-80 bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
-                  <div className="p-4 border-b border-slate-100/60 flex items-center justify-between bg-white/40">
-                    <div className="flex items-center gap-2">
-                       <MessageSquare className="w-4 h-4 text-fuchsia-500" />
-                       <h3 className="font-semibold text-slate-800 text-sm">AI 持续编辑</h3>
-                    </div>
-                  </div>
-
-                  {selectedItem && selectedVersion ? (
-                    <>
-                      {/* Version Info Header */}
-                      <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100/60">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-xs text-slate-500">
-                            <GitBranch className="w-3 h-3" />
-                            <span>版本 {selectedVersion.versionNumber}</span>
-                            <span className="text-slate-300">•</span>
-                            <Clock className="w-3 h-3" />
-                            <span>{new Date(selectedVersion.createdAt).toLocaleDateString()}</span>
-                          </div>
-                          <button
-                            onClick={() => setShowVersionPanel(!showVersionPanel)}
-                            className="flex items-center gap-1 text-xs text-cyan-600 hover:text-cyan-700 transition-colors"
-                          >
-                            <History className="w-3 h-3" />
-                            <span>历史</span>
-                            {showVersionPanel ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                          </button>
-                        </div>
-                        {selectedVersion.isTemplate && (
-                          <div className="flex items-center gap-1 text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full mt-1 w-fit">
-                            <Star className="w-3 h-3 fill-current" />
-                            <span>模板</span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Version History Panel */}
-                      {showVersionPanel && selectedItem && (
-                        <div className="border-b border-slate-100/60 bg-white/80 max-h-48 overflow-y-auto">
-                          <div className="p-3 space-y-2">
-                            <div className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2">版本历史</div>
-                            {selectedItem.versions
-                              .sort((a, b) => b.createdAt - a.createdAt)
-                              .map((version) => (
-                                <div 
-                                  key={version.id}
-                                  className={`flex items-center justify-between p-2 rounded-lg border transition-all cursor-pointer ${
-                                    selectedVersion.id === version.id 
-                                      ? 'bg-cyan-50 border-cyan-200' 
-                                      : 'bg-white border-slate-100 hover:border-cyan-200 hover:bg-slate-50'
-                                  }`}
-                                  onClick={() => handleSwitchVersion(selectedItem.id, version.id)}
-                                >
-                                  <div className="flex items-center gap-2">
-                                    <div className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${
-                                      selectedVersion.id === version.id 
-                                        ? 'bg-cyan-500 text-white' 
-                                        : 'bg-slate-100 text-slate-600'
-                                    }`}>
-                                      v{version.versionNumber}
-                                    </div>
-                                    <div>
-                                      <div className="text-[11px] font-medium text-slate-700 flex items-center gap-1">
-                                        版本 {version.versionNumber}
-                                        {version.isTemplate && (
-                                          <Star className="w-3 h-3 text-amber-500 fill-current" />
-                                        )}
-                                      </div>
-                                      <div className="text-[9px] text-slate-400">
-                                        {new Date(version.createdAt).toLocaleString()}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleToggleTemplate(selectedItem.id, version.id);
-                                      }}
-                                      className={`p-1 rounded transition-colors ${
-                                        version.isTemplate 
-                                          ? 'text-amber-500 bg-amber-50 hover:bg-amber-100' 
-                                          : 'text-slate-400 hover:text-amber-500 hover:bg-amber-50'
-                                      }`}
-                                      title={version.isTemplate ? "取消模板" : "设为模板"}
-                                    >
-                                      <Star className={`w-3.5 h-3.5 ${version.isTemplate ? 'fill-current' : ''}`} />
-                                    </button>
-                                    {selectedVersion.id !== version.id && (
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          handleRevertToVersion(selectedItem.id, version.id);
-                                        }}
-                                        className="p-1 rounded text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 transition-colors"
-                                        title="回溯到此版本"
-                                      >
-                                        <Copy className="w-3.5 h-3.5" />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Chat History - takes 2/3 */}
-                      <div className="flex-[2] overflow-y-auto p-4 space-y-4 custom-scrollbar flex flex-col min-h-0">
-                        {(selectedVersion.chatHistory || []).length === 0 ? (
-                          <div className="flex-1 flex flex-col items-center justify-center text-center">
-                            <MessageSquare className="w-10 h-10 text-slate-200 mb-3" />
-                            <p className="text-xs text-slate-400 leading-relaxed">
-                              开始与 AI 对话以修改图表<br/>
-                              <span className="text-[10px] text-slate-300 mt-1 block">支持粘贴图片作为参考</span>
-                            </p>
-                          </div>
-                        ) : (
-                          <>
-                            {(selectedVersion.chatHistory || []).map((msg: ChatMessage) => (
-                              <div key={msg.id} className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'self-end items-end' : 'self-start items-start'} animate-in fade-in slide-in-from-bottom-2`}>
-                                {msg.image && (
-                                  <div 
-                                    className="relative group cursor-pointer mb-1"
-                                    onClick={() => setPreviewImage(msg.image!)}
-                                  >
-                                    <img src={msg.image} alt="upload" className="max-w-[180px] h-auto rounded-lg border border-slate-200 shadow-sm group-hover:shadow-md transition-shadow" />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 rounded-lg transition-colors flex items-center justify-center">
-                                      <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                                    </div>
-                                  </div>
-                                )}
-                                <div className={`px-4 py-2.5 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-fuchsia-500 text-white rounded-tr-sm shadow-md shadow-fuchsia-500/20' : 'bg-white text-slate-700 rounded-tl-sm shadow-sm border border-slate-100 whitespace-pre-wrap leading-relaxed'}`}>
-                                  {msg.content}
-                                </div>
-                              </div>
-                            ))}
-                            {isChatting && (
-                              <div className="self-start bg-white text-slate-500 px-4 py-2.5 rounded-2xl rounded-tl-sm shadow-sm border border-slate-100 text-sm flex items-center gap-2 animate-pulse">
-                                <Loader2 className="w-4 h-4 animate-spin" /> 正在分析与应用修改...
-                              </div>
-                            )}
-                          </>
-                        )}
-                        <div className="h-2 shrink-0" />
-                      </div>
-                      
-                      {/* Chat Input Area - takes 1/3 */}
-                      <div className="flex-[1] flex flex-col border-t border-slate-100/60 bg-white/60">
-                        {/* Attached Image Preview */}
-                        <div className="px-3 pt-2">
-                          {chatImage && (
-                            <div className="relative inline-block group">
-                              <img 
-                                src={chatImage} 
-                                alt="preview" 
-                                className="h-14 rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:shadow-md transition-shadow" 
-                                onClick={() => setPreviewImage(chatImage)}
-                              />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 rounded-lg transition-colors flex items-center justify-center pointer-events-none">
-                                <ZoomIn className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                              </div>
-                              <button 
-                                onClick={() => setChatImage(null)} 
-                                className="absolute -top-1.5 -right-1.5 bg-slate-800 text-white rounded-full p-0.5 shadow-sm hover:bg-red-500 transition-colors hover:scale-110"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                        
-                        {/* Input Controls */}
-                        <div className="flex-1 flex flex-col p-2 gap-1.5">
-                          <div className="flex items-end gap-1.5 flex-1">
-                            <button 
-                              onClick={() => fileInputRef.current?.click()} 
-                              className="p-1.5 text-slate-400 hover:text-fuchsia-500 hover:bg-fuchsia-50 rounded-lg transition-colors shrink-0"
-                              title="上传图片"
-                            >
-                              <ImagePlus className="w-4 h-4" />
-                            </button>
-                            <input type="file" accept="image/*" className="hidden" ref={fileInputRef} onChange={handleChatImageUpload} />
-                            
-                            <textarea
-                              value={chatInput}
-                              onChange={(e) => {
-                                setChatInput(e.target.value);
-                                e.target.style.height = 'auto';
-                                e.target.style.height = `${Math.min(e.target.scrollHeight, 100)}px`;
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleSendChat();
-                                }
-                              }}
-                              onPaste={(e) => {
-                                const items = Array.from(e.clipboardData.items);
-                                const imageItem = items.find(item => item.type.startsWith("image/"));
-                                if (imageItem) {
-                                  e.preventDefault();
-                                  const file = imageItem.getAsFile();
-                                  if (!file) return;
-                                  const reader = new FileReader();
-                                  reader.onload = (ev) => {
-                                    const base64 = ev.target?.result as string;
-                                    if (base64) setChatImage(base64);
-                                  };
-                                  reader.readAsDataURL(file);
-                                }
-                              }}
-                              placeholder="输入修改指令..."
-                              className="flex-1 min-h-[32px] max-h-[100px] p-1.5 bg-white/80 border border-slate-200/60 rounded-lg text-xs resize-none focus:outline-none focus:ring-1 focus:ring-fuchsia-500/30 focus:border-fuchsia-300 placeholder:text-slate-400 custom-scrollbar overflow-y-auto"
-                              rows={1}
-                              style={{ height: '32px' }}
-                            />
-                            
-                            <button 
-                              onClick={handleSendChat}
-                              disabled={(!chatInput.trim() && !chatImage) || isChatting}
-                              className="p-1.5 bg-fuchsia-500 hover:bg-fuchsia-600 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-lg transition-colors shrink-0 shadow-sm"
-                            >
-                              <Send className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                          <div className="flex items-center justify-between px-1">
-                            <span className="text-[9px] text-slate-300">Ctrl+V 粘贴图片</span>
-                            <span className="text-[9px] text-slate-300">Enter 发送</span>
-                          </div>
-                        </div>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex-1 flex items-center justify-center text-center px-6">
-                      <div>
-                        <Upload className="w-10 h-10 text-slate-200 mx-auto mb-3" />
-                        <p className="text-sm text-slate-400 font-medium">选择图层以编辑</p>
-                        <p className="text-xs text-slate-300 mt-1">从左侧图层列表中选择一个特效</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
               </div>
