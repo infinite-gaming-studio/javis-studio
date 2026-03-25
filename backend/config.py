@@ -17,9 +17,11 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
 
     # IndexTTS
-    indextts_api_url: str = "http://localhost:7860"
-    # How IndexTTS2 is wrapped: "gradio" or "rest"
-    indextts_mode: str = "gradio"
+    indextts_api_url: str = "http://localhost:8000"
+    # How IndexTTS2 is wrapped: "gradio" (WebUI) or "rest" (REST API)
+    indextts_mode: str = "rest"
+    # Optional API token for authentication
+    indextts_api_token: str = ""
 
     # Services
     pexels_api_key: str = ""

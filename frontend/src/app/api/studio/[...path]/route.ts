@@ -221,8 +221,17 @@ export async function POST(
                 formData.append("emo_audio", blob, "emo_audio.wav");
             }
 
-            // Optional scalar/text emotion fields (Index-TTS API compatible)
-            if (vs.emotion_mode !== undefined) formData.append("emotion_mode", vs.emotion_mode);
+            // Map emotion_mode to IndexTTS2 API's emo_mode (0-3)
+            // "none" → 0, "audio" → 1, "vector" → 2, "text" → 3
+            const emoModeMap: Record<string, string> = {
+                "none": "0",
+                "audio": "1",
+                "vector": "2",
+                "text": "3",
+            };
+            if (vs.emotion_mode !== undefined) {
+                formData.append("emo_mode", emoModeMap[vs.emotion_mode] || "0");
+            }
             if (vs.emo_alpha !== undefined) formData.append("emo_alpha", String(vs.emo_alpha));
             if (vs.emo_text !== undefined) formData.append("emo_text", vs.emo_text);
             if (vs.use_random !== undefined) formData.append("use_random", String(vs.use_random));

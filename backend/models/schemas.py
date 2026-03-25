@@ -19,7 +19,7 @@ class VoiceSettings(BaseModel):
     # Emotion
     emotion_mode: EmotionMode = EmotionMode.none
     emo_audio_prompt: Optional[str] = Field(None, description="Emotional reference audio (base64, URL, or filename)")
-    emo_alpha: float = Field(1.0, ge=0.0, le=1.0, description="Emotion influence (0.0=none, 1.0=full)")
+    emo_alpha: float = Field(1.0, ge=0.0, le=2.0, description="Emotion influence (0.0-2.0, higher values = stronger expression)")
     # [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]
     emo_vector: Optional[list[float]] = Field(None, min_length=8, max_length=8, description="8-element emotion vector")
     emo_text: Optional[str] = Field(None, description="Text emotion description (used when emotion_mode=text)")

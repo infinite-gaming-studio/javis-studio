@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import json
 import logging
 import os
 import tempfile
@@ -68,6 +69,124 @@ def _build_emo_vector(
     return None
 
 
+def _emotion_mode_to_int(mode: EmotionMode) -> int:
+    """Convert EmotionMode enum to IndexTTS2 API emo_mode integer."""
+    mapping = {
+        EmotionMode.none: 0,      # 与音色参考音频相同
+        EmotionMode.audio: 1,     # 使用情感参考音频
+        EmotionMode.vector: 2,    # 使用情感向量控制
+        EmotionMode.text: 3,      # 使用情感描述文本控制
+    }
+    return mapping.get(mode, 0)
+
+
+async def synthesize_rest(
+    text: str,
+    voice_settings: VoiceSettings,
+    output_path: str,
+    emotion_hint: Optional[str] = None,
+) -> str:
+    """
+    Call IndexTTS2 via REST API (POST /api/tts).
+    
+    The REST API expects multipart/form-data with:
+    - text: string (required)
+    - spk_audio: file (required)
+    - emo_mode: int (0-3)
+    - emo_alpha: float (0.0-2.0)
+    - emo_audio: file (for emo_mode=1)
+    - emo_vector: JSON array (for emo_mode=2)
+    - emo_text: string (for emo_mode=3)
+    """
+    spk_path = _decode_audio_to_tmp(voice_settings.spk_audio_prompt)
+    
+    try:
+        # Build multipart form data
+        files = {}
+        data = {"text": text}
+        
+        # Speaker audio (required)
+        spk_file = open(spk_path, "rb")
+        files["spk_audio"] = (os.path.basename(spk_path), spk_file, "audio/wav")
+        
+        # Determine emotion mode
+        emo_mode = _emotion_mode_to_int(voice_settings.emotion_mode)
+        data["emo_mode"] = str(emo_mode)
+        
+        # Emotion alpha
+        if voice_settings.emo_alpha != 1.0:
+            data["emo_alpha"] = str(voice_settings.emo_alpha)
+        
+        # Emotion reference audio (mode 1)
+        emo_file = None
+        if voice_settings.emotion_mode == EmotionMode.audio and voice_settings.emo_audio_prompt:
+            emo_path = _decode_audio_to_tmp(voice_settings.emo_audio_prompt)
+            emo_file = open(emo_path, "rb")
+            files["emo_audio"] = (os.path.basename(emo_path), emo_file, "audio/wav")
+        
+        # Emotion vector (mode 2)
+        emo_vec = _build_emo_vector(voice_settings, emotion_hint)
+        if emo_vec is not None:
+            data["emo_vector"] = json.dumps(emo_vec)
+        
+        # Emotion text (mode 3)
+        if voice_settings.emotion_mode == EmotionMode.text and voice_settings.emo_text:
+            data["emo_text"] = voice_settings.emo_text
+        
+        # Optional parameters for generation control
+        if voice_settings.use_random:
+            data["use_random"] = "true"
+        
+        # Build headers with optional auth
+        headers = {}
+        if settings.indextts_api_token:
+            headers["Authorization"] = f"Bearer {settings.indextts_api_token}"
+        
+        # Make the API call
+        api_url = f"{settings.indextts_api_url.rstrip('/')}/api/tts"
+        
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            response = await client.post(
+                api_url,
+                files=files,
+                data=data,
+                headers=headers,
+            )
+        
+        # Close file handles
+        spk_file.close()
+        if emo_file:
+            emo_file.close()
+        
+        # Check response
+        if response.status_code == 503:
+            raise RuntimeError("IndexTTS2 模型未加载，请稍后重试")
+        
+        if response.status_code == 400:
+            error_msg = response.json().get("error", "请求参数错误")
+            raise ValueError(f"IndexTTS2 参数错误: {error_msg}")
+        
+        if response.status_code == 401:
+            raise PermissionError("IndexTTS2 API Token 无效")
+        
+        if response.status_code != 200:
+            error_msg = response.text
+            raise RuntimeError(f"IndexTTS2 合成失败 ({response.status_code}): {error_msg}")
+        
+        # Response is audio binary (WAV)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "wb") as f:
+            f.write(response.content)
+        
+        logger.info("TTS synthesis done (REST) → %s", output_path)
+        return output_path
+        
+    finally:
+        # Cleanup temp files if we created them
+        if spk_path != voice_settings.spk_audio_prompt and os.path.exists(spk_path):
+            os.unlink(spk_path)
+
+
 async def synthesize_gradio(
     text: str,
     voice_settings: VoiceSettings,
@@ -75,7 +194,7 @@ async def synthesize_gradio(
     emotion_hint: Optional[str] = None,
 ) -> str:
     """
-    Call IndexTTS2 via Gradio client API.
+    Call IndexTTS2 via Gradio client API (legacy mode).
 
     The Gradio API for IndexTTS2 WebUI exposes tts inference under the
     /gen_single endpoint (as identified from the webui source).
@@ -143,7 +262,7 @@ async def synthesize_gradio(
         result = result.get("name") or result.get("path") or list(result.values())[0]
 
     shutil.copy2(str(result), output_path)
-    logger.info("TTS synthesis done → %s", output_path)
+    logger.info("TTS synthesis done (Gradio) → %s", output_path)
     return output_path
 
 
@@ -163,7 +282,9 @@ async def synthesize(
     output_path = str(Path(output_dir) / fname)
 
     mode = settings.indextts_mode.lower()
-    if mode == "gradio":
+    if mode == "rest":
+        return await synthesize_rest(text, voice_settings, output_path, emotion_hint)
+    elif mode == "gradio":
         return await synthesize_gradio(text, voice_settings, output_path, emotion_hint)
 
     raise NotImplementedError(f"Unsupported indextts_mode: {mode}")
