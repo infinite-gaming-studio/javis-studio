@@ -12,6 +12,15 @@ export interface VoiceSettings {
   emo_vector?: number[]; // 8 floats
   emo_text?: string;
   use_random: boolean;
+  do_sample?: boolean;
+  top_p?: number;
+  top_k?: number;
+  temperature?: number;
+  length_penalty?: number;
+  num_beams?: number;
+  repetition_penalty?: number;
+  max_mel_tokens?: number;
+  max_text_tokens_per_segment?: number;
 }
 
 export interface ScriptSegment {

@@ -25,6 +25,17 @@ class VoiceSettings(BaseModel):
     emo_text: Optional[str] = Field(None, description="Text emotion description (used when emotion_mode=text)")
     use_random: bool = Field(False, description="Enable stochastic inference (reduces voice fidelity)")
 
+    # New sampling and control parameters
+    do_sample: bool = Field(True, description="Whether to perform sampling")
+    top_p: float = Field(0.8, description="Top-p sampling parameter")
+    top_k: int = Field(30, description="Top-k sampling parameter")
+    temperature: float = Field(0.8, description="Temperature parameter")
+    length_penalty: float = Field(0.0, description="Length penalty")
+    num_beams: int = Field(3, description="Beam search width")
+    repetition_penalty: float = Field(10.0, description="Repetition penalty")
+    max_mel_tokens: int = Field(1500, description="Max generated mel tokens")
+    max_text_tokens_per_segment: int = Field(120, description="Max text tokens per sub-segment")
+
 
 class ScriptSegment(BaseModel):
     """A single narration segment from the LLM."""

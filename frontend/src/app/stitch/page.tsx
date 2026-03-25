@@ -1258,9 +1258,10 @@ export default function StitchStudioPage() {
 
 
               </div>
+
+            </div>
             ) : (
-<div className="absolute inset-0 flex flex-row gap-6 animate-in fade-in zoom-in-95 duration-400">
-              
+              <div className="absolute inset-0 flex flex-row gap-6 animate-in fade-in zoom-in-95 duration-400">
               {/* Left Panel: AI Generator (1/3 width) */}
               <div className="w-1/3 min-w-[320px] max-w-[400px] bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
                 {/* Visual Header */}

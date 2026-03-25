@@ -136,6 +136,24 @@ async def synthesize_rest(
         # Optional parameters for generation control
         if voice_settings.use_random:
             data["use_random"] = "true"
+        if not voice_settings.do_sample:
+            data["do_sample"] = "false"
+        if voice_settings.top_p != 0.8:
+            data["top_p"] = str(voice_settings.top_p)
+        if voice_settings.top_k != 30:
+            data["top_k"] = str(voice_settings.top_k)
+        if voice_settings.temperature != 0.8:
+            data["temperature"] = str(voice_settings.temperature)
+        if voice_settings.length_penalty != 0.0:
+            data["length_penalty"] = str(voice_settings.length_penalty)
+        if voice_settings.num_beams != 3:
+            data["num_beams"] = str(voice_settings.num_beams)
+        if voice_settings.repetition_penalty != 10.0:
+            data["repetition_penalty"] = str(voice_settings.repetition_penalty)
+        if voice_settings.max_mel_tokens != 1500:
+            data["max_mel_tokens"] = str(voice_settings.max_mel_tokens)
+        if voice_settings.max_text_tokens_per_segment != 120:
+            data["max_text_tokens_per_segment"] = str(voice_settings.max_text_tokens_per_segment)
         
         # Build headers with optional auth
         headers = {}
