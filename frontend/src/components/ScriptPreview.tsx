@@ -1,6 +1,6 @@
 "use client";
 import { useState, useRef, useEffect } from "react";
-import { ScriptSegment } from "@/lib/api";
+import { ScriptSegment, AudioSegmentResult } from "@/lib/api";
 import { useNotification } from "@/lib/NotificationContext";
 import {
     FileText,
@@ -43,6 +43,8 @@ interface Props {
     generatingSegments?: number[];
     canGenerate?: boolean;
     currentPlayingIndex?: number | null;
+    /** Existing audio results, used to show version count badges */
+    audioSegments?: AudioSegmentResult[];
 }
 
 // 智能分割文本 - 按目标段数和最大字符数分割
@@ -113,7 +115,7 @@ function smartSplitText(text: string, targetSegments: number | null, maxCharsPer
     return result.filter(s => s.length > 0);
 }
 
-export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false, currentPlayingIndex }: Props) {
+export default function ScriptPreview({ segments, onChange, loading, onGenerateSegment, generatingSegments = [], canGenerate = false, currentPlayingIndex, audioSegments = [] }: Props) {
     const { showConfirm } = useNotification();
     
     const [manualCount, setManualCount] = useState<number>(1);
@@ -143,6 +145,18 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
 
     const updateEmotion = (idx: number, emotion: string) => {
         onChange(segments.map((s) => (s.index === idx ? { ...s, emotion_hint: emotion } : s)));
+    };
+
+    const handleUnifyEmotion = (emotion: string) => {
+        showConfirm({
+            title: "统一更改情绪",
+            message: `确定要将所有分段的情绪都更改为 "${emotion.toUpperCase()}" 吗？`,
+            confirmText: "确认",
+            cancelText: "取消",
+            onConfirm: () => {
+                onChange(segments.map(s => ({ ...s, emotion_hint: emotion })));
+            }
+        });
     };
 
     const createManualSegments = () => {
@@ -355,6 +369,25 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                         <Plus className="w-3 h-3" />
                         添加
                     </button>
+                    <div className="relative flex items-center bg-cyan-50 border border-cyan-100 hover:bg-cyan-100/80 rounded-lg px-2 py-1 transition-colors gap-1.5">
+                        <Smile className="w-3 h-3 text-cyan-600" />
+                        <select
+                            value=""
+                            onChange={(e) => {
+                                if (e.target.value) {
+                                    handleUnifyEmotion(e.target.value);
+                                    e.target.value = "";
+                                }
+                            }}
+                            className="appearance-none text-[11px] font-bold text-cyan-700 bg-transparent outline-none pr-5 cursor-pointer animate-none"
+                        >
+                            <option value="" disabled>统一更改所有情绪...</option>
+                            {Object.keys(EMOTION_COLORS).map(k => (
+                                <option key={k} value={k} className="bg-white text-slate-700">{k.toUpperCase()}</option>
+                            ))}
+                        </select>
+                        <ChevronDown className="w-3 h-3 text-cyan-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    </div>
                     <button
                         onClick={clearAllSegments}
                         className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-500 bg-slate-100 hover:bg-red-50 hover:text-red-500 transition-all"
@@ -468,35 +501,40 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                                     {seg.index + 1}
                                     {isPlaying && <span className="ml-1 text-[9px]">▶</span>}
                                 </div>
-                                <div className={`flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-1 rounded-full border shadow-sm ${colorClass} transition-colors duration-300`}>
-                                    <Smile className="w-3 h-3" />
-                                    {seg.emotion_hint?.toUpperCase() ?? "NEUTRAL"}
-                                </div>
+                                {/* 情绪统一在选项卡右侧下拉菜单选择，此处不重复显示 */}
                                 {/* 字符数提示 */}
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded ${seg.text.length > 150 ? 'text-orange-500 bg-orange-50' : 'text-slate-400'}`}>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded ml-2 ${seg.text.length > 150 ? 'text-orange-500 bg-orange-50' : 'text-slate-400'}`}>
                                     {seg.text.length} 字
                                 </span>
 
                                 <div className="ml-auto flex items-center gap-1">
-                                    {/* 重新生成音频按钮 */}
-                                    {onGenerateSegment && canGenerate && (
-                                        <button
-                                            onClick={() => onGenerateSegment(seg.index)}
-                                            disabled={generatingSegments.includes(seg.index)}
-                                            className={`p-1.5 rounded-lg transition-all ${
-                                                generatingSegments.includes(seg.index)
-                                                    ? 'text-cyan-600 bg-cyan-100 cursor-wait'
-                                                    : 'text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 opacity-0 group-hover:opacity-100'
-                                            }`}
-                                            title={generatingSegments.includes(seg.index) ? "生成中..." : "重新生成此段音频"}
-                                        >
-                                            {generatingSegments.includes(seg.index) ? (
-                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                            ) : (
-                                                <Volume2 className="w-3.5 h-3.5" />
-                                            )}
-                                        </button>
-                                    )}
+                                    {/* 生成/追加音频版本按钮 */}
+                                    {onGenerateSegment && canGenerate && (() => {
+                                        const versionCount = audioSegments.find(a => a.segment_index === seg.index)?.versions?.length ?? 0;
+                                        return (
+                                            <button
+                                                onClick={() => onGenerateSegment(seg.index)}
+                                                disabled={generatingSegments.includes(seg.index)}
+                                                className={`relative p-1.5 rounded-lg transition-all ${
+                                                    generatingSegments.includes(seg.index)
+                                                        ? 'text-cyan-600 bg-cyan-100 cursor-wait'
+                                                        : 'text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 opacity-0 group-hover:opacity-100'
+                                                }`}
+                                                title={generatingSegments.includes(seg.index) ? "生成中..." : versionCount > 0 ? `生成新版本（已有 ${versionCount} 个）` : "生成音频"}
+                                            >
+                                                {generatingSegments.includes(seg.index) ? (
+                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                ) : (
+                                                    <Volume2 className="w-3.5 h-3.5" />
+                                                )}
+                                                {versionCount > 1 && (
+                                                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-cyan-500 text-white text-[8px] font-bold flex items-center justify-center">
+                                                        {versionCount}
+                                                    </span>
+                                                )}
+                                            </button>
+                                        );
+                                    })()}
                                     {/* 展开/收缩按钮 */}
                                     <button
                                         onClick={() => setExpandedSegment(isExpanded ? null : seg.index)}
@@ -527,13 +565,13 @@ export default function ScriptPreview({ segments, onChange, loading, onGenerateS
                                         <select
                                             value={seg.emotion_hint ?? "neutral"}
                                             onChange={(e) => updateEmotion(seg.index, e.target.value)}
-                                            className="appearance-none text-[11px] font-semibold bg-white/80 hover:bg-white border border-slate-200 hover:border-cyan-300 rounded-xl pl-2.5 pr-7 py-1 text-slate-600 outline-none focus:ring-4 focus:ring-cyan-500/10 transition-all duration-200 cursor-pointer shadow-sm"
+                                            className={`appearance-none text-[11px] font-bold border rounded-full pl-3 pr-7 py-1 outline-none focus:ring-4 focus:ring-cyan-500/10 transition-all duration-200 cursor-pointer shadow-sm ${colorClass}`}
                                         >
                                             {Object.keys(EMOTION_COLORS).map((k) => (
-                                                <option key={k} value={k}>{k.toUpperCase()}</option>
+                                                <option key={k} value={k} className="bg-white text-slate-700">{k.toUpperCase()}</option>
                                             ))}
                                         </select>
-                                        <ChevronDown className="w-3 h-3 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        <ChevronDown className="w-3 h-3 text-current absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
                                     </div>
                                     <button
                                         onClick={() => removeSegment(seg.index)}

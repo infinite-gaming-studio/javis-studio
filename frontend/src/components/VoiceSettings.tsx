@@ -40,6 +40,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                 setSpkPreview(null);
             }
             setSpkName("");
+            if (spkRef.current) spkRef.current.value = "";
         }
     }, [value.spk_audio_prompt]);
 
@@ -51,6 +52,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
                 setEmoPreview(null);
             }
             setEmoName("");
+            if (emoRef.current) emoRef.current.value = "";
         }
     }, [value.emo_audio_prompt]);
 
@@ -63,6 +65,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
         if (spkPreview) URL.revokeObjectURL(spkPreview);
         setSpkPreview(URL.createObjectURL(file));
         update({ spk_audio_prompt: await fileToBase64(file) });
+        if (spkRef.current) spkRef.current.value = "";
     };
 
     const handleEmoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -72,6 +75,7 @@ export default function VoiceSettings({ value, onChange }: Props) {
         if (emoPreview) URL.revokeObjectURL(emoPreview);
         setEmoPreview(URL.createObjectURL(file));
         update({ emo_audio_prompt: await fileToBase64(file) });
+        if (emoRef.current) emoRef.current.value = "";
     };
 
     const emoVec = value.emo_vector ?? new Array(8).fill(0);
@@ -84,13 +88,19 @@ export default function VoiceSettings({ value, onChange }: Props) {
 
             {/* Speaker reference audio */}
             <div className="space-y-1.5">
-                <p className="text-xs font-medium text-slate-500">参考说话人音频 <span className="text-red-400">*</span></p>
+                <p className="text-xs font-bold text-slate-700">参考说话人音频 <span className="text-red-400">*</span></p>
                 <button
                     onClick={() => spkRef.current?.click()}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-slate-200 hover:border-cyan-400 text-sm text-slate-600 hover:text-cyan-600 transition-all shadow-sm hover:shadow"
+                    className={`w-full flex items-center gap-2 px-4 py-3 rounded-xl border transition-all shadow-sm ${
+                        spkName 
+                            ? 'bg-cyan-50 border-cyan-300 text-cyan-700 hover:bg-cyan-100 hover:shadow' 
+                            : 'bg-gradient-to-r from-cyan-500 to-blue-500 border-transparent text-white hover:from-cyan-600 hover:to-blue-600 hover:shadow-md'
+                    }`}
                 >
-                    <Mic2 className="w-4 h-4 text-cyan-500" />
-                    <span className="truncate">{spkName || "上传参考音频 (.wav, .mp3, .flac, .ogg, .m4a, ...)"}</span>
+                    <Mic2 className={`w-5 h-5 ${spkName ? 'text-cyan-600' : 'text-white'}`} />
+                    <span className="truncate font-medium text-sm">
+                        {spkName || "点击上传参考说话人音频"}
+                    </span>
                 </button>
                 <input ref={spkRef} type="file" accept="audio/*" className="hidden" onChange={handleSpkUpload} />
                 {spkPreview && (

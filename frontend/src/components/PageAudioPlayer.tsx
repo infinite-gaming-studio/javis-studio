@@ -3,32 +3,19 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { Play, Pause, Download, Volume2, Loader2, Package, Clock, BarChart3, AlertCircle, RefreshCw, ChevronLeft, ChevronRight, Layers } from "lucide-react";
 import JSZip from "jszip";
 import WaveSurfer from "wavesurfer.js";
-import { AudioSegmentResult, ScriptSegment, audioUrl } from "@/lib/api";
-
-interface FailedSegment {
-    segment: ScriptSegment;
-    error: string;
-    retryCount: number;
-}
-
-interface SynthesisProgress {
-    total: number;
-    current: number;
-    segmentTimes: number[];
-    startTime: number | null;
-    failed: FailedSegment[];
-}
+import { AudioClip, audioUrl } from "@/lib/api";
 
 interface Props {
-    segments: AudioSegmentResult[];
+    clips: AudioClip[];
     loading?: boolean;
-    projectName?: string;
-    synthesisProgress?: SynthesisProgress;
-    onRetryFailed?: () => void;
+    generatingCount?: number;
+    totalToGenerate?: number;
+    finishedCount?: number;
+    startTime?: number;
+    pageTitle?: string;
+    pageIndex?: number;
     onPlayStateChange?: (index: number | null, isPlaying: boolean) => void;
     currentPlayingIndex?: number | null;
-    /** Called when user picks a different audio version for a segment */
-    onSelectVersion?: (segmentIndex: number, versionIndex: number) => void;
 }
 
 // 下载单个音频文件
@@ -66,150 +53,22 @@ function formatTime(seconds: number): string {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-// 进度显示组件
-function ProgressDisplay({ progress, onRetryFailed }: { progress: SynthesisProgress; onRetryFailed?: () => void }) {
-    const { total, current, segmentTimes, startTime, failed } = progress;
-    const failedCount = failed.length;
-    const attemptedCount = current;
-    const successCount = attemptedCount - failedCount;
-    const percentage = total > 0 ? (successCount / total) * 100 : 0;
-    
-    const [now, setNow] = useState(Date.now());
-    
-    const totalElapsed = startTime ? now - startTime : 0;
-    const avgTime = segmentTimes.length > 0 
-        ? segmentTimes.reduce((a, b) => a + b, 0) / segmentTimes.length 
-        : 0;
-    const remainingSegments = total - successCount;
-    const estimatedRemaining = avgTime > 0 ? avgTime * remainingSegments : 0;
-    
-    const currentSegmentTime = segmentTimes.length > 0 
-        ? segmentTimes[segmentTimes.length - 1] 
-        : 0;
-
-    useEffect(() => {
-        if (!startTime) return;
-        const timer = setInterval(() => setNow(Date.now()), 100);
-        return () => clearInterval(timer);
-    }, [startTime]);
-
-    const isComplete = successCount === total && total > 0 && failedCount === 0;
-
-    return (
-        <div className="relative rounded-xl p-4 space-y-3 overflow-hidden ai-glow-card">
-            <div className="absolute inset-0 rounded-xl ai-border-glow" />
-            <div className="absolute inset-0 bg-gradient-to-br from-cyan-50/90 to-blue-50/90 rounded-xl" />
-            <div className="relative z-10">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-lg bg-cyan-500 flex items-center justify-center shadow-sm">
-                            <BarChart3 className="w-4 h-4 text-white" />
-                        </div>
-                        <span className="text-sm font-semibold text-slate-700">合成进度</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-500 tabular-nums">
-                        <Clock className="w-3 h-3" />
-                        <span>已用 {formatDuration(totalElapsed)}</span>
-                    </div>
-                </div>
-
-                <div className="space-y-1.5">
-                    <div className="flex items-center justify-between text-xs">
-                        <div className="flex items-center gap-2">
-                            <span className="font-medium text-cyan-700">
-                                成功 {successCount} / {total} 段
-                            </span>
-                            {failedCount > 0 && (
-                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 font-medium">
-                                    {failedCount} 段失败
-                                </span>
-                            )}
-                        </div>
-                        <span className="text-slate-500">{percentage.toFixed(0)}%</span>
-                    </div>
-                    <div className="h-2.5 bg-white/80 rounded-full overflow-hidden border border-cyan-100/50 shadow-inner relative">
-                        <div className="absolute inset-0 ai-progress-shimmer" />
-                        <div 
-                            className="h-full rounded-full transition-all duration-300 ease-out shadow-sm relative overflow-hidden ai-progress-gradient"
-                            style={{ width: `${percentage}%` }}
-                        >
-                            <div className="absolute inset-0 ai-progress-glow" />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2 pt-1">
-                    <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
-                        <p className="text-[10px] text-slate-500 mb-0.5">本段耗时</p>
-                        <p className="text-xs font-semibold text-cyan-700 tabular-nums">
-                            {currentSegmentTime > 0 ? formatDuration(currentSegmentTime) : "--"}
-                        </p>
-                    </div>
-                    <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
-                        <p className="text-[10px] text-slate-500 mb-0.5">平均耗时</p>
-                        <p className="text-xs font-semibold text-blue-700 tabular-nums">
-                            {avgTime > 0 ? formatDuration(avgTime) : "--"}
-                        </p>
-                    </div>
-                    <div className="bg-white/70 rounded-lg p-2 border border-cyan-100/50">
-                        <p className="text-[10px] text-slate-500 mb-0.5">预计剩余</p>
-                        <p className="text-xs font-semibold text-emerald-600 tabular-nums">
-                            {estimatedRemaining > 0 && failedCount === 0 ? formatDuration(estimatedRemaining) : "--"}
-                        </p>
-                    </div>
-                </div>
-
-                {failedCount > 0 && (
-                    <div className="bg-red-50/70 rounded-lg p-3 border border-red-200/50 space-y-2">
-                        <div className="flex items-center gap-1.5 text-xs text-red-600">
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            <span className="font-medium">{failedCount} 段合成失败</span>
-                        </div>
-                        <div className="space-y-1 max-h-20 overflow-y-auto custom-scroll">
-                            {failed.map((f) => (
-                                <div key={f.segment.index} className="text-[10px] text-red-500 truncate flex items-center gap-1">
-                                    <span className="font-mono text-red-400">#{f.segment.index}</span>
-                                    <span className="truncate flex-1">{f.segment.text.slice(0, 20)}...</span>
-                                </div>
-                            ))}
-                        </div>
-                        {onRetryFailed && (
-                            <button
-                                onClick={onRetryFailed}
-                                className="w-full py-1.5 rounded-lg text-xs font-medium text-white bg-gradient-to-r from-red-500 to-rose-500 hover:from-red-600 hover:to-rose-600 transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                            >
-                                <RefreshCw className="w-3 h-3" />
-                                重试失败段落
-                            </button>
-                        )}
-                    </div>
-                )}
-
-                {isComplete && (
-                    <div className="text-center py-1">
-                        <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200">
-                            ✓ 全部分段合成完成
-                        </span>
-                    </div>
-                )}
-            </div>
-        </div>
-    );
-}
-
 // 批量下载所有音频为压缩包
-async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectName?: string) {
+async function downloadAllAudiosAsZip(clips: AudioClip[], pageTitle?: string, pageIndex?: number) {
     const zip = new JSZip();
-    const folderName = projectName?.trim() || "audio_segments";
+    const folderName = pageTitle?.trim() || "audio_clips";
     const folder = zip.folder(folderName);
 
     if (!folder) return;
 
-    for (let i = 0; i < segments.length; i++) {
-        const seg = segments[i];
-        const filename = `segment_${String(i + 1).padStart(2, '0')}.wav`;
+    for (let i = 0; i < clips.length; i++) {
+        const clip = clips[i];
+        if (!clip.audio_url) continue;
+        const filename = pageIndex !== undefined 
+            ? `page${String(pageIndex + 1).padStart(2, '0')}_segment${String(i + 1).padStart(2, '0')}.wav`
+            : `segment_${String(i + 1).padStart(2, '0')}.wav`;
         try {
-            const response = await fetch(audioUrl(seg.audio_url));
+            const response = await fetch(audioUrl(clip.audio_url));
             const blob = await response.blob();
             folder.file(filename, blob);
         } catch (error) {
@@ -228,17 +87,16 @@ async function downloadAllAudiosAsZip(segments: AudioSegmentResult[], projectNam
     window.URL.revokeObjectURL(downloadUrl);
 }
 
-interface SegmentPlayerProps {
-    seg: AudioSegmentResult;
+interface ClipPlayerProps {
+    clip: AudioClip;
     index: number;
     isPlaying: boolean;
     onToggle: () => void;
     onFinish?: () => void;
     audioRef: React.MutableRefObject<HTMLAudioElement | null>;
-    onSelectVersion?: (versionIndex: number) => void;
 }
 
-function SegmentPlayer({ seg, index, isPlaying, onToggle, onFinish, audioRef, onSelectVersion }: SegmentPlayerProps) {
+function ClipPlayer({ clip, index, isPlaying, onToggle, onFinish, audioRef }: ClipPlayerProps) {
     const waveformRef = useRef<HTMLDivElement>(null);
     const wavesurferRef = useRef<WaveSurfer | null>(null);
     const [isReady, setIsReady] = useState(false);
@@ -257,7 +115,7 @@ function SegmentPlayer({ seg, index, isPlaying, onToggle, onFinish, audioRef, on
 
         const ws = WaveSurfer.create({
             container: waveformRef.current,
-            url: audioUrl(seg.audio_url),
+            url: audioUrl(clip.audio_url || ""),
             waveColor: '#cbd5e1',
             progressColor: '#06b6d4',
             cursorColor: '#06b6d4',
@@ -293,7 +151,7 @@ function SegmentPlayer({ seg, index, isPlaying, onToggle, onFinish, audioRef, on
             ws.destroy();
             wavesurferRef.current = null;
         };
-    }, [seg.audio_url, index]); // 移除 onFinish 依赖
+    }, [clip.audio_url, index]); // 移除 onFinish 依赖
 
     // 同步播放状态
     useEffect(() => {
@@ -348,23 +206,23 @@ function SegmentPlayer({ seg, index, isPlaying, onToggle, onFinish, audioRef, on
                     <div className="flex-1 min-w-0 space-y-2 overflow-hidden">
                         {/* 文本 - 滚动显示，前5字固定 */}
                         <div className={`transition-all duration-300 ${isPlaying ? 'text-sm font-medium' : 'text-xs'}`}>
-                            {isPlaying && seg.text.length > 8 ? (
+                            {isPlaying && clip.text.length > 8 ? (
                                 <div className="flex items-center overflow-hidden">
-                                    <span className="text-slate-700 flex-shrink-0">{seg.text.slice(0, 5)}</span>
+                                    <span className="text-slate-700 flex-shrink-0">{clip.text.slice(0, 5)}</span>
                                     <div className="overflow-hidden flex-1 relative">
                                         <div 
                                             className="whitespace-nowrap animate-marquee inline-flex"
-                                            style={{'--marquee-text': `'${seg.text.slice(5)} ${seg.text.slice(5)} '`} as React.CSSProperties}
+                                            style={{'--marquee-text': `'${clip.text.slice(5)} ${clip.text.slice(5)} '`} as React.CSSProperties}
                                         >
-                                            <span className="text-slate-500">{seg.text.slice(5)}</span>
+                                            <span className="text-slate-500">{clip.text.slice(5)}</span>
                                             <span className="text-slate-500 mx-4 opacity-30">|</span>
-                                            <span className="text-slate-500">{seg.text.slice(5)}</span>
+                                            <span className="text-slate-500">{clip.text.slice(5)}</span>
                                             <span className="text-slate-500 mx-4 opacity-30">|</span>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
-                                <p className="text-slate-600 truncate">{seg.text}</p>
+                                <p className="text-slate-600 truncate">{clip.text}</p>
                             )}
                         </div>
                         
@@ -406,54 +264,58 @@ function SegmentPlayer({ seg, index, isPlaying, onToggle, onFinish, audioRef, on
                             #{index + 1}
                         </span>
                         <button
-                            onClick={() => downloadAudio(seg.audio_url, `segment_${String(index + 1).padStart(2, '0')}.wav`)}
-                            className="p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all"
+                            onClick={() => {
+                                if (clip.audio_url) {
+                                    downloadAudio(clip.audio_url, `clip_${String(index + 1).padStart(2, '0')}.wav`);
+                                }
+                            }}
+                            disabled={!clip.audio_url}
+                            className={`p-2 text-slate-400 hover:text-cyan-600 hover:bg-cyan-50 rounded-lg transition-all ${!clip.audio_url ? 'opacity-50 cursor-not-allowed' : ''}`}
                             title="下载此段"
                         >
                             <Download className={`transition-all duration-300 ${isPlaying ? 'w-4 h-4' : 'w-3.5 h-3.5'}`} />
                         </button>
                     </div>
-                    {/* 版本切换器 — 当有多个版本时显示 */}
-                    {(seg.versions?.length ?? 0) > 1 && (
-                        <div className={`flex items-center gap-1.5 px-3 pt-0 pb-2.5 transition-all duration-300 ${isPlaying ? 'opacity-100' : 'opacity-60'}`}>
-                            <Layers className="w-3 h-3 text-cyan-400 flex-shrink-0" />
-                            <span className="text-[10px] text-slate-400 mr-1">版本</span>
-                            <div className="flex items-center gap-1 flex-wrap">
-                                {seg.versions.map((v, vi) => (
-                                    <button
-                                        key={vi}
-                                        onClick={() => onSelectVersion?.(vi)}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-medium transition-all ${
-                                            vi === (seg.selectedVersionIndex ?? 0)
-                                                ? 'bg-cyan-500 text-white shadow-sm'
-                                                : 'bg-slate-100 text-slate-500 hover:bg-cyan-100 hover:text-cyan-700'
-                                        }`}
-                                        title={v.label || `版本 ${vi + 1}`}
-                                    >
-                                        {v.label || `V${vi + 1}`}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             </div>
         </div>
     );
 }
 
-export default function AudioPlayer({
-    segments,
-    loading,
-    projectName,
-    synthesisProgress,
-    onRetryFailed,
-    onPlayStateChange,
-    currentPlayingIndex: externalPlayingIndex,
-    onSelectVersion,
+export default function PageAudioPlayer({ 
+    clips, 
+    loading, 
+    generatingCount = 0, 
+    totalToGenerate = 0,
+    finishedCount = 0,
+    startTime,
+    pageTitle, 
+    pageIndex,
+    onPlayStateChange, 
+    currentPlayingIndex: externalPlayingIndex 
 }: Props) {
     const [isDownloading, setIsDownloading] = useState(false);
     const [internalPlayingIndex, setInternalPlayingIndex] = useState<number | null>(null);
+    const [elapsedTime, setElapsedTime] = useState(0);
+
+    // 实时更新耗时
+    useEffect(() => {
+        if (!startTime) {
+            setElapsedTime(0);
+            return;
+        }
+        
+        // 如果还在生成中，开启定时器
+        if (finishedCount < totalToGenerate) {
+            const interval = setInterval(() => {
+                setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+            }, 1000);
+            return () => clearInterval(interval);
+        } else {
+            // 生成完成了，固定最后时长
+            setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+        }
+    }, [startTime, finishedCount, totalToGenerate]);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     const playerRefs = useRef<(HTMLDivElement | null)[]>([]);
 
@@ -476,7 +338,7 @@ export default function AudioPlayer({
 
     const handleFinish = (index: number) => {
         const nextIndex = index + 1;
-        if (nextIndex < segments.length) {
+        if (nextIndex < clips.length) {
             // 自动播放下一段
             setCurrentPlayingIndex(nextIndex);
         } else {
@@ -510,26 +372,17 @@ export default function AudioPlayer({
     }, [currentPlayingIndex]);
 
     const handleBatchDownload = async () => {
-        if (segments.length === 0 || isDownloading) return;
+        if (clips.length === 0 || isDownloading) return;
         setIsDownloading(true);
-        await downloadAllAudiosAsZip(segments, projectName);
+        await downloadAllAudiosAsZip(clips, pageTitle, pageIndex);
         setIsDownloading(false);
     };
 
-    if (loading && synthesisProgress && synthesisProgress.total > 0) {
+    if (loading && clips.length === 0) {
         return (
             <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">音频输出</label>
-                <ProgressDisplay progress={synthesisProgress} onRetryFailed={onRetryFailed} />
-            </div>
-        );
-    }
-
-    if (loading) {
-        return (
-            <div className="space-y-3">
-                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">音频输出</label>
-                <div className="flex items-center gap-3 py-8 justify-center">
+                <div className="flex items-center gap-3 py-8 justify-center bg-slate-50/50 rounded-xl border border-dashed border-slate-300">
                     <div className="flex gap-1 items-end h-6">
                         {[0, 1, 2, 3].map((i) => (
                             <span key={i} className="w-1 bg-cyan-400 rounded-full animate-bounce" style={{ height: `${12 + i * 4}px`, animationDelay: `${i * 0.15}s` }} />
@@ -541,7 +394,7 @@ export default function AudioPlayer({
         );
     }
 
-    if (segments.length === 0) {
+    if (clips.length === 0 && generatingCount === 0) {
         return (
             <div className="space-y-3">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">音频输出</label>
@@ -553,11 +406,57 @@ export default function AudioPlayer({
         );
     }
 
+    const totalDuration = clips.reduce((acc, clip) => acc + (clip.duration_secs || 0), 0);
+    const progressPercent = totalToGenerate > 0 ? Math.round((finishedCount / totalToGenerate) * 100) : 0;
+
     return (
         <div className="space-y-3">
+            {/* 顶部署理进度与状态 */}
+            {(totalToGenerate > 0 || clips.length > 0) && (
+                <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <div className="p-1.5 bg-cyan-50 text-cyan-600 rounded-lg">
+                                <BarChart3 className="w-4 h-4" />
+                            </div>
+                            <div>
+                                <h4 className="text-xs font-bold text-slate-700">合成状态统计</h4>
+                                <p className="text-[10px] text-slate-400">
+                                    {finishedCount < totalToGenerate ? "正在合成，已耗时: " : "合成完成，总耗时: "}
+                                    {formatTime(elapsedTime)}
+                                </p>
+                            </div>
+                        </div>
+                        {totalToGenerate > 0 && (
+                            <div className="text-right">
+                                <span className="text-xs font-bold text-cyan-600">{progressPercent}%</span>
+                                <p className="text-[10px] text-slate-400">已完成 {finishedCount}/{totalToGenerate} 段</p>
+                            </div>
+                        )}
+                    </div>
+                    
+                    {totalToGenerate > 0 && (
+                        <div className="space-y-1.5">
+                            <div className="h-1.5 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div 
+                                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500 ease-out"
+                                    style={{ width: `${progressPercent}%` }}
+                                />
+                            </div>
+                            {generatingCount > 0 && (
+                                <p className="text-[10px] text-cyan-600 font-medium animate-pulse flex items-center gap-1">
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    正在并行合成 {generatingCount} 个分段音频...
+                                </p>
+                            )}
+                        </div>
+                    )}
+                </div>
+            )}
+
             <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                    音频输出 ({segments.length} 段)
+                    音频输出 ({clips.length} 段)
                 </label>
                 <button
                     onClick={handleBatchDownload}
@@ -576,24 +475,20 @@ export default function AudioPlayer({
 
             <div 
                 ref={scrollContainerRef}
-                className="space-y-2 max-h-[400px] overflow-y-auto pr-1 custom-scroll"
+                className="space-y-2 max-h-[600px] overflow-y-auto pr-1 custom-scroll"
             >
-                {segments.map((seg, idx) => (
+                {clips.map((clip, idx) => (
                     <div 
-                        key={`${seg.segment_index}-${seg.selectedVersionIndex ?? 0}`}
+                        key={clip.id}
                         ref={el => { playerRefs.current[idx] = el; }}
                     >
-                        <SegmentPlayer 
-                            seg={seg} 
+                        <ClipPlayer 
+                            clip={clip} 
                             index={idx}
                             isPlaying={currentPlayingIndex === idx}
                             onToggle={() => handleToggle(idx)}
                             onFinish={() => handleFinish(idx)}
                             audioRef={{ current: null }}
-                            onSelectVersion={onSelectVersion
-                                ? (vi) => onSelectVersion(seg.segment_index, vi)
-                                : undefined
-                            }
                         />
                     </div>
                 ))}

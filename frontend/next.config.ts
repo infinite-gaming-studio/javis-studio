@@ -33,6 +33,16 @@ const nextConfig: NextConfig = {
         source: "/api/studio/video/convert",
         destination: `${backendUrl}/api/studio/video/convert`,
       },
+
+      // Video rendering - handled by backend (image + audio → MP4)
+      {
+        source: "/api/studio/render-video/page",
+        destination: `${backendUrl}/api/studio/render-video/page`,
+      },
+      {
+        source: "/api/studio/render-video/project",
+        destination: `${backendUrl}/api/studio/render-video/project`,
+      },
       
       // TTS is handled by frontend API route to support external TTS APIs
       // This allows the frontend to proxy to user-configured TTS endpoints (e.g., ngrok)

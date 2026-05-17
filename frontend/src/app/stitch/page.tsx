@@ -943,8 +943,7 @@ export default function StitchStudioPage() {
         <div className="flex-1 min-h-0 relative">
           
           {/* ======================= HUB TAB ======================= */}
-          {activeTab === "hub" && (
-            previewEffectId ? (
+          {activeTab === "hub" && previewEffectId && (
               <div className="absolute inset-0 flex flex-row gap-4 animate-in fade-in zoom-in-95 duration-400 z-50 bg-slate-900/50 p-2 rounded-3xl">
                 {/* Center Canvas for Preview */}
                 <div className="flex-1 bg-slate-900 rounded-3xl border-4 border-slate-800 shadow-2xl flex flex-col overflow-hidden relative group">
@@ -1260,7 +1259,9 @@ export default function StitchStudioPage() {
               </div>
 
             </div>
-            ) : (
+            )}
+            
+          {activeTab === "hub" && !previewEffectId && (
               <div className="absolute inset-0 flex flex-row gap-6 animate-in fade-in zoom-in-95 duration-400">
               {/* Left Panel: AI Generator (1/3 width) */}
               <div className="w-1/3 min-w-[320px] max-w-[400px] bg-white/60 backdrop-blur-2xl rounded-3xl border border-white shadow-xl shadow-slate-200/50 flex flex-col overflow-hidden">
@@ -1376,7 +1377,7 @@ export default function StitchStudioPage() {
                         <Search className="w-10 h-10 text-slate-300" />
                       </div>
                       <p className="font-semibold text-slate-600 text-lg">未找到匹配的素材</p>
-                      <p className="text-sm mt-2 font-medium">请尝试更换搜索词或选择 "全部" 分类</p>
+                      <p className="text-sm mt-2 font-medium">请尝试更换搜索词或选择 &quot;全部&quot; 分类</p>
                     </div>
                   ) : (
                     <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6 auto-rows-max">
@@ -1434,7 +1435,6 @@ export default function StitchStudioPage() {
                 </div>
               </div>
             </div>
-            )
           )}
 
           {/* ======================= STUDIO TAB ======================= */}

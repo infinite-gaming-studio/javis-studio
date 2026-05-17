@@ -1,11 +1,14 @@
 import asyncio
 import logging
 import os
+import tempfile
 import uuid
 from pathlib import Path
+from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
-from fastapi.responses import FileResponse
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
 
 from config import get_settings
 from models.schemas import (
@@ -20,6 +23,7 @@ from models.schemas import (
     ScriptSegment,
 )
 from services import llm_service, tts_service, audio_service
+from services import render_video_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -144,9 +148,7 @@ async def serve_audio(session_id: str, filename: str):
     media_type = "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
     return FileResponse(str(audio_path), media_type=media_type)
 
-import tempfile
 import subprocess
-from fastapi.background import BackgroundTasks
 
 @router.post("/video/convert")
 async def convert_video(background_tasks: BackgroundTasks, file: UploadFile = File(...)):
@@ -168,7 +170,7 @@ async def convert_video(background_tasks: BackgroundTasks, file: UploadFile = Fi
         # Run ffmpeg conversion
         # Use simple copy if possible, but libx264 ensures maximum compatibility for browser-recorded WebMs
         cmd = [
-            "ffmpeg",
+            render_video_service.FFMPEG_BIN,
             "-y",
             "-i", input_path,
             "-c:v", "libx264",
@@ -203,4 +205,192 @@ async def convert_video(background_tasks: BackgroundTasks, file: UploadFile = Fi
         import shutil
         shutil.rmtree(temp_dir, ignore_errors=True)
         logger.exception("Video conversion error")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pydantic models for video rendering requests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AudioClipInfo(BaseModel):
+    """A single audio clip belonging to one page."""
+    audio_url: str        # e.g. "/api/studio/audio/single/abc.wav"
+    duration_secs: Optional[float] = None
+
+
+class PageRenderRequest(BaseModel):
+    """Request body for rendering a single page's video."""
+    page_index: int
+    page_title: Optional[str] = None
+    image: str            # base64 data-URI  OR  http URL
+    clips: List[AudioClipInfo]
+
+
+class ProjectRenderRequest(BaseModel):
+    """Request body for rendering ALL pages and merging into one video."""
+    project_name: Optional[str] = "Javis_Studio_Project"
+    pages: List[PageRenderRequest]
+    merge: bool = True    # if False, returns a ZIP of per-page MP4s
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _resolve_audio_path(audio_url_str: str) -> str:
+    """
+    Convert a frontend audio_url like "/audio/tts_abc.wav"
+    to an absolute filesystem path.
+    """
+    if audio_url_str.startswith("/audio/"):
+        # This is a frontend-saved audio file
+        frontend_dir = Path(__file__).parent.parent.parent / "frontend" / "public"
+        rel_path = audio_url_str.lstrip("/")
+        return str(frontend_dir / rel_path)
+
+    # Legacy support if anything was saved to backend storage directly
+    prefix = "/api/studio/audio/"
+    if audio_url_str.startswith(prefix):
+        storage = Path(settings.storage_dir)
+        rel = audio_url_str[len(prefix):]
+        return str(storage / rel)
+        
+    return audio_url_str
+
+
+async def _render_one_page(
+    page: PageRenderRequest,
+    work_dir: str,
+) -> str:
+    """Render a single page to MP4 inside *work_dir*. Returns the mp4 path."""
+    label = f"page{page.page_index + 1:02d}"
+    audio_paths = [_resolve_audio_path(c.audio_url) for c in page.clips]
+
+    # Validate audio files exist
+    for p in audio_paths:
+        if not Path(p).exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Audio file not found: {p}"
+            )
+
+    out_path = os.path.join(work_dir, f"{label}.mp4")
+    await render_video_service.async_render_page_mp4(
+        image_src=page.image,
+        audio_paths=audio_paths,
+        output_path=out_path,
+        work_dir=work_dir,
+        page_label=label,
+    )
+    return out_path
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoint: render a SINGLE page to MP4
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/render-video/page")
+async def render_page_video(
+    req: PageRenderRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Render one PPT page (image + audio clips) to a high-quality MP4.
+    Returns the MP4 file directly as a download.
+    """
+    import shutil
+    if not req.image:
+        raise HTTPException(status_code=400, detail="Page image is required")
+    if not req.clips:
+        raise HTTPException(status_code=400, detail="At least one audio clip is required")
+
+    work_dir = tempfile.mkdtemp(prefix="javis_page_video_")
+    try:
+        mp4_path = await _render_one_page(req, work_dir)
+    except HTTPException:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise
+    except Exception as e:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        logger.exception("Page video render failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    safe_title = (req.page_title or f"第{req.page_index + 1}页").replace("/", "_").replace("\\", "_")
+    filename = f"{safe_title}.mp4"
+
+    background_tasks.add_task(shutil.rmtree, work_dir, True)
+    return FileResponse(
+        path=mp4_path,
+        media_type="video/mp4",
+        filename=filename,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Endpoint: render ALL pages and return merged MP4 or ZIP
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.post("/render-video/project")
+async def render_project_video(
+    req: ProjectRenderRequest,
+    background_tasks: BackgroundTasks,
+):
+    """
+    Render every page and:
+    - if merge=True  → return one single merged MP4
+    - if merge=False → return a ZIP file with per-page MP4s
+    """
+    import shutil, zipfile, io
+
+    if not req.pages:
+        raise HTTPException(status_code=400, detail="No pages provided")
+
+    work_dir = tempfile.mkdtemp(prefix="javis_project_video_")
+    try:
+        # Render pages sequentially to avoid OOM on large PDFs
+        mp4_paths: List[str] = []
+        for page in req.pages:
+            if not page.image or not page.clips:
+                logger.warning("Skipping page %d: missing image or clips", page.page_index)
+                continue
+            mp4_path = await _render_one_page(page, work_dir)
+            mp4_paths.append(mp4_path)
+
+        if not mp4_paths:
+            raise HTTPException(status_code=400, detail="No renderable pages (each page needs an image AND at least one audio clip)")
+
+        safe_name = (req.project_name or "Javis_Studio_Project").replace("/", "_").replace("\\", "_")
+
+        if req.merge:
+            # ── Merge into one MP4 ──────────────────────────────────────
+            merged_path = os.path.join(work_dir, f"{safe_name}.mp4")
+            await render_video_service.async_merge_mp4s(mp4_paths, merged_path, work_dir)
+            background_tasks.add_task(shutil.rmtree, work_dir, True)
+            return FileResponse(
+                path=merged_path,
+                media_type="video/mp4",
+                filename=f"{safe_name}.mp4",
+            )
+        else:
+            # ── Pack per-page MP4s into ZIP ──────────────────────────────
+            zip_buf = io.BytesIO()
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_STORED) as zf:
+                for page, mp4_path in zip(req.pages, mp4_paths):
+                    page_title = (page.page_title or f"第{page.page_index + 1}页").replace("/", "_")
+                    arcname = f"{page.page_index + 1:02d}_{page_title}.mp4"
+                    zf.write(mp4_path, arcname)
+            zip_bytes = zip_buf.getvalue()
+            background_tasks.add_task(shutil.rmtree, work_dir, True)
+            return StreamingResponse(
+                io.BytesIO(zip_bytes),
+                media_type="application/zip",
+                headers={"Content-Disposition": f'attachment; filename="{safe_name}_视频.zip"'},
+            )
+
+    except HTTPException:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        raise
+    except Exception as e:
+        shutil.rmtree(work_dir, ignore_errors=True)
+        logger.exception("Project video render failed")
         raise HTTPException(status_code=500, detail=str(e))

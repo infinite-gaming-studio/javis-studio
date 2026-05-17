@@ -30,17 +30,52 @@ export interface ScriptSegment {
   speaker?: string;
 }
 
+/** A single generated audio version for one script segment. */
+export interface AudioVersion {
+  /** UUID assigned by the backend path e.g. "single/abc123.wav" */
+  audio_url: string;
+  duration_secs?: number;
+  /** When this version was generated (ISO string) */
+  createdAt: string;
+  /** Optional label, e.g. "版本 1", "版本 2" */
+  label?: string;
+}
+
 export interface AudioSegmentResult {
   segment_index: number;
   text: string;
+  /** Legacy single URL kept for backward-compat */
   audio_url: string;
   duration_secs?: number;
+  /** All generated audio versions for this segment */
+  versions: AudioVersion[];
+  /** Index into `versions` that is the currently selected/active version */
+  selectedVersionIndex: number;
 }
 
 export interface StudioGenerateResponse {
   script: ScriptSegment[];
   segments: AudioSegmentResult[];
   final_audio_url?: string;
+}
+
+// ─── New Architecture Types ───────────────────────────────────────────────────
+
+export interface AudioClip {
+  id: string;             // unique ID
+  text: string;           // script text
+  emotion_hint?: string;  // user selected emotion
+  // Results
+  audio_url?: string;
+  duration_secs?: number;
+}
+
+export interface ProjectPage {
+  id: string;
+  pageIndex: number;
+  image?: string;         // base64 or URL
+  title?: string;         // user defined page title / notes
+  clips: AudioClip[];     // The M audio segments for this page
 }
 
 export interface ScriptOnlyResponse {
@@ -151,6 +186,70 @@ export async function ttsSingle(
     text,
     voice_settings: voiceSettings,
   });
+}
+
+/**
+ * Generate one new audio version for a segment and return an AudioVersion object.
+ * Callers should push the returned value into `segment.versions`.
+ */
+export async function ttsSingleVersion(
+  text: string,
+  voiceSettings: VoiceSettings,
+  label?: string
+): Promise<AudioVersion> {
+  const res = await ttsSingle(text, voiceSettings);
+  return {
+    audio_url: res.audio_url,
+    duration_secs: res.duration_secs,
+    createdAt: new Date().toISOString(),
+    label: label ?? "",
+  };
+}
+
+/** Helper: create a fresh AudioSegmentResult from a first-version response. */
+export function makeSegmentResult(
+  segmentIndex: number,
+  text: string,
+  version: AudioVersion
+): AudioSegmentResult {
+  return {
+    segment_index: segmentIndex,
+    text,
+    audio_url: version.audio_url,
+    duration_secs: version.duration_secs,
+    versions: [version],
+    selectedVersionIndex: 0,
+  };
+}
+
+/** Helper: append a new version to an existing segment result (immutable). */
+export function appendVersion(
+  seg: AudioSegmentResult,
+  version: AudioVersion
+): AudioSegmentResult {
+  const versions = [...seg.versions, version];
+  return {
+    ...seg,
+    versions,
+    selectedVersionIndex: versions.length - 1, // auto-select newest
+    audio_url: version.audio_url,
+    duration_secs: version.duration_secs,
+  };
+}
+
+/** Helper: select a specific version of a segment (immutable). */
+export function selectVersion(
+  seg: AudioSegmentResult,
+  versionIndex: number
+): AudioSegmentResult {
+  const version = seg.versions[versionIndex];
+  if (!version) return seg;
+  return {
+    ...seg,
+    selectedVersionIndex: versionIndex,
+    audio_url: version.audio_url,
+    duration_secs: version.duration_secs,
+  };
 }
 
 export function fileToBase64(file: File): Promise<string> {
