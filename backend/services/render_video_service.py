@@ -19,6 +19,7 @@ import asyncio
 import base64
 import logging
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -73,6 +74,29 @@ def _find_ffmpeg() -> str:
 
 
 FFMPEG_BIN: str = _find_ffmpeg()
+
+
+def _get_best_h264_encoder(ffmpeg_path: str) -> str:
+    """Dynamically determine the best h264 encoder based on environment and ffmpeg capabilities."""
+    try:
+        result = subprocess.run([ffmpeg_path, "-encoders"], capture_output=True, text=True, timeout=5)
+        encoders = result.stdout
+        # Mac VideoToolbox hardware acceleration
+        if "h264_videotoolbox" in encoders and platform.system() == "Darwin":
+            logger.info("Using GPU acceleration: h264_videotoolbox")
+            return "h264_videotoolbox"
+        # Nvidia hardware acceleration
+        if "h264_nvenc" in encoders:
+            logger.info("Using GPU acceleration: h264_nvenc")
+            return "h264_nvenc"
+    except Exception as e:
+        logger.warning("Failed to probe ffmpeg encoders, falling back to libx264: %s", e)
+    
+    logger.info("Using CPU rendering: libx264")
+    return "libx264"
+
+
+H264_ENCODER: str = _get_best_h264_encoder(FFMPEG_BIN)
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +209,7 @@ def render_page_mp4(
         "-loop", "1",
         "-i", img_path,
         "-i", audio_path,
-        "-c:v", "libx264",
+        "-c:v", H264_ENCODER,
         "-preset", "ultrafast",
         "-crf", "23",  # slightly higher CRF is fine for static slides
         "-pix_fmt", "yuv420p",
