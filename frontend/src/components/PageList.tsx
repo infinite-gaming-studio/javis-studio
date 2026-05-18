@@ -42,11 +42,16 @@ export default function PageList({ pages, selectedIndex, onSelect, onAddPage, on
               
               {/* Info */}
               <div className="flex-1 min-w-0">
-                <div className="text-xs font-semibold text-slate-700 truncate">
-                  {page.title || `第 ${idx + 1} 页`}
+                <div className="flex items-center gap-1.5 mb-1">
+                  <span className={`px-1.5 py-0.5 text-[10px] font-black rounded ${selectedIndex === idx ? 'bg-cyan-100 text-cyan-700' : 'bg-slate-200 text-slate-600'}`}>
+                    P{idx + 1}
+                  </span>
+                  <div className="text-xs font-bold text-slate-800 truncate">
+                    {page.title || `空页面`}
+                  </div>
                 </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">
-                  {page.clips.length} 个片段
+                <div className="text-[10px] font-medium text-slate-500">
+                  {page.clips.length} 个旁白片段
                 </div>
               </div>
             </div>

@@ -195,12 +195,24 @@ export default function PageEditor({
     if (showToast) showToast(`已重新拆分为 ${chunks.length} 段`, "success");
   };
 
+  // Derive page emotion status to display on the button
+  let currentPageEmotion: string | null = null;
+  if (page.clips.length > 0) {
+    currentPageEmotion = page.clips[0].emotion_hint || 'neutral';
+    for (const c of page.clips) {
+      if ((c.emotion_hint || 'neutral') !== currentPageEmotion) {
+        currentPageEmotion = null;
+        break;
+      }
+    }
+  }
+
   return (
     <div className="flex flex-col h-full bg-slate-50/50">
       {/* 头部信息 */}
-      <div className="p-5 border-b border-slate-200 bg-white shadow-sm z-10 flex gap-5 items-center">
+      <div className="p-6 md:p-8 border-b border-slate-200 bg-gradient-to-r from-white to-slate-50/50 shadow-sm z-10 flex gap-6 items-start">
         {/* PPT 页面截图上传/预览区 */}
-        <div className="group relative w-48 aspect-video bg-slate-50 hover:bg-slate-100 rounded-xl overflow-hidden border-2 border-dashed border-slate-200 hover:border-cyan-400 flex items-center justify-center flex-shrink-0 transition-all shadow-sm">
+        <div className="group relative w-56 aspect-video bg-slate-50 hover:bg-slate-100 rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 hover:border-cyan-400 flex items-center justify-center flex-shrink-0 transition-all shadow-sm mt-1">
           {page.image ? (
             <>
               <img src={page.image} alt="Slide Preview" className="w-full h-full object-cover cursor-pointer" onClick={() => setPreviewImage(page.image || null)} />
@@ -226,14 +238,19 @@ export default function PageEditor({
         </div>
 
         <div className="flex-1 flex flex-col h-full py-1">
-          <input
-            type="text"
-            value={page.title || ""}
-            onChange={(e) => updateTitle(e.target.value)}
-            placeholder={`第 ${page.pageIndex + 1} 页备注 / 标题`}
-            className="text-xl font-bold bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-cyan-400 outline-none px-2 py-1 text-slate-800 placeholder-slate-300 transition-colors mb-4"
-          />
-          <div className="flex gap-2 mt-auto">
+          <div className="flex items-center gap-3 mb-4">
+            <span className="px-2.5 py-1 bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-xs font-black rounded-lg shadow-sm whitespace-nowrap">
+              第 {page.pageIndex + 1} 页
+            </span>
+            <input
+              type="text"
+              value={page.title || ""}
+              onChange={(e) => updateTitle(e.target.value)}
+              placeholder="页面备注 / 标题..."
+              className="flex-1 text-xl font-bold bg-transparent border-b-2 border-transparent hover:border-slate-200 focus:border-cyan-400 outline-none px-1 py-1 text-slate-800 placeholder-slate-300 transition-colors"
+            />
+          </div>
+          <div className="flex gap-2.5 mt-auto">
             <button
               onClick={() => setActiveConfig(activeConfig === "ai" ? null : "ai")}
               disabled={isGeneratingAI}
@@ -264,7 +281,7 @@ export default function PageEditor({
             <div className="relative group">
               <button className="flex items-center bg-cyan-50 border border-cyan-100 hover:bg-cyan-100/80 rounded-lg px-2.5 py-1.5 transition-colors gap-1.5 text-xs font-bold text-cyan-700">
                 <Smile className="w-3.5 h-3.5 text-cyan-600" />
-                本页统一情绪
+                {currentPageEmotion ? `本页: ${currentPageEmotion.toUpperCase()}` : "本页统一情绪"}
                 <ChevronDown className="w-3 h-3 text-cyan-600 ml-0.5 opacity-70" />
               </button>
               <div className="absolute left-0 top-full pt-1 z-50 hidden group-hover:block">
@@ -466,9 +483,9 @@ export default function PageEditor({
               <textarea
                 value={clip.text}
                 onChange={(e) => updateClipText(clip.id, e.target.value)}
-                rows={isExpanded ? 14 : 6}
-                placeholder="输入旁白内容..."
-                className="w-full bg-white/50 hover:bg-white focus:bg-white border-2 border-transparent hover:border-cyan-100 focus:border-cyan-300 rounded-xl py-3 px-4 text-sm text-slate-800 outline-none resize-none transition-all custom-scroll shadow-inner"
+                rows={isExpanded ? 14 : 5}
+                placeholder="在此输入或粘贴需要合成的旁白内容..."
+                className="w-full bg-slate-50/50 hover:bg-slate-50 focus:bg-white border-2 border-slate-100 hover:border-cyan-200 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 rounded-2xl py-4 px-5 text-[15px] leading-relaxed text-slate-800 outline-none resize-none transition-all custom-scroll shadow-sm"
               />
             </div>
           );

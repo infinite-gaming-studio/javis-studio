@@ -21,7 +21,7 @@ import {
 import { useNotification } from "@/lib/NotificationContext";
 import JSZip from "jszip";
 
-import { XCircle, History, Trash2, Sparkles, Wand2, FileUp, Loader2, Download, Film, Clapperboard, Smile, Volume2 } from "lucide-react";
+import { XCircle, History, Trash2, Sparkles, Wand2, FileUp, Loader2, Download, Film, Clapperboard, Smile, Volume2, Copy, FileText } from "lucide-react";
 import PageList from "@/components/PageList";
 import PageEditor from "@/components/PageEditor";
 import PageAudioPlayer from "@/components/PageAudioPlayer";
@@ -102,6 +102,9 @@ export default function StudioPage() {
   const [generationTask, setGenerationTask] = useState<{ total: number; finished: number; startTime: number } | null>(null);
   const [isRenderingVideo, setIsRenderingVideo] = useState(false);
   const [videoRenderProgress, setVideoRenderProgress] = useState<{ current: number; total: number } | null>(null);
+  
+  const [isImportScriptModalOpen, setIsImportScriptModalOpen] = useState(false);
+  const [importScriptText, setImportScriptText] = useState("");
 
   useEffect(() => {
     if (isIndexedDBAvailable()) {
@@ -284,7 +287,7 @@ export default function StudioPage() {
           id: generateId() + `_pdf_${i}`,
           pageIndex: startIndex + i - 1,
           image: dataUrl,
-          title: `${file.name.replace('.pdf', '')} - 第 ${i} 页`,
+          title: file.name.replace('.pdf', ''),
           clips: [{ id: generateId() + '_clip', text: "", emotion_hint: "neutral" }]
         });
       }
@@ -435,6 +438,98 @@ export default function StudioPage() {
         showToast(`已全局将所有情绪统一更改为 ${emotion.toUpperCase()}`, "success");
       }
     });
+  };
+
+  const handleCopyPrompt = () => {
+    const prompt = `你现在是一个专业的短视频/课程旁白编导。请你为我提供的文档内容，编写可以直接用于 TTS（文字转语音）的旁白脚本。
+
+【TTS 语音合成严格规范】
+1. 停顿控制：绝对不要使用描述性文字（如“停顿两秒”）。需要短暂停顿请使用“……”；需要长停顿请使用“…………”。
+2. 语气控制：需要强烈语气时直接使用叹号“！”，切勿添加动作或神态描写。
+3. 公式与专业词汇：TTS 无法准确朗读符号和公式。你必须将所有数学、物理、化学公式以及英文缩写，全部转写为标准的中文读法！例如：“CO2”必须写为“二氧化碳”，“E=mc²”写为“E等于M乘以C的平方”，“98%”写为“百分之九十八”。
+4. 纯净输出：旁白文本必须极度纯净，只能包含 TTS 能读出的字，严禁出现导演提示、多余的解说词或无关文字。
+
+【严格的输出格式】
+你必须严格按照以下标记格式输出，方便我直接程序化导入。不要说任何废话，直接输出结果：
+
+[第1页]
+(此处填写第1页的纯净旁白文本)
+
+[第2页]
+(此处填写第2页的纯净旁白文本)
+
+...以此类推`;
+
+    navigator.clipboard.writeText(prompt);
+    showToast("AI 提示词已复制，请前往大模型（如 ChatGPT）粘贴使用！", "success");
+  };
+
+  const handleImportScript = () => {
+    if (!importScriptText.trim()) return;
+
+    const regex = /(?:\[|【)第\s*(\d+)\s*页(?:\]|】)/g;
+    const parts = importScriptText.split(regex);
+    
+    if (parts.length < 3) {
+      showToast("无法识别格式，请确保使用了 [第X页] 格式进行标记", "error");
+      return;
+    }
+
+    const splitText = (text: string, maxLen: number = 100): string[] => {
+      const segments: string[] = [];
+      let currentSegment = "";
+      const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+      
+      for (const sentence of sentences) {
+        if (currentSegment.length + sentence.length <= maxLen) {
+          currentSegment += sentence;
+        } else {
+          if (currentSegment.trim()) segments.push(currentSegment.trim());
+          if (sentence.length > maxLen) {
+             let remaining = sentence;
+             while(remaining.length > maxLen) {
+                segments.push(remaining.slice(0, maxLen).trim());
+                remaining = remaining.slice(maxLen);
+             }
+             if (remaining.trim()) currentSegment = remaining;
+             else currentSegment = "";
+          } else {
+             currentSegment = sentence;
+          }
+        }
+      }
+      if (currentSegment.trim()) segments.push(currentSegment.trim());
+      return segments;
+    };
+
+    const newPages = [...pages];
+    let importedCount = 0;
+    
+    for (let i = 1; i < parts.length; i += 2) {
+      const pageNumStr = parts[i];
+      const content = parts[i+1].trim();
+      const pageIndex = parseInt(pageNumStr, 10) - 1;
+      
+      if (pageIndex >= 0 && pageIndex < newPages.length && content) {
+        const chunks = splitText(content, 100); 
+        const generatedClips = chunks.map((chunk, j) => ({
+          id: generateId() + \`_import_\${i}_\${j}\`,
+          text: chunk,
+          emotion_hint: newPages[pageIndex].clips[0]?.emotion_hint || "neutral"
+        }));
+        
+        newPages[pageIndex] = {
+          ...newPages[pageIndex],
+          clips: generatedClips.length > 0 ? generatedClips : [{ id: generateId(), text: "", emotion_hint: "neutral" }]
+        };
+        importedCount++;
+      }
+    }
+
+    setPages(newPages);
+    setIsImportScriptModalOpen(false);
+    setImportScriptText("");
+    showToast(\`成功导入并拆分了 \${importedCount} 页的文案！\`, "success");
   };
 
   // ─── Video Rendering ───────────────────────────────────────────────────────
@@ -604,6 +699,24 @@ export default function StudioPage() {
 
   const currentPage = pages[selectedPageIndex];
 
+  // Derive global emotion status to display on the button
+  let currentGlobalEmotion: string | null = null;
+  let hasClips = false;
+  for (const p of pages) {
+    for (const c of p.clips) {
+      hasClips = true;
+      const emo = c.emotion_hint || 'neutral';
+      if (!currentGlobalEmotion) {
+        currentGlobalEmotion = emo;
+      } else if (currentGlobalEmotion !== emo) {
+        currentGlobalEmotion = null;
+        break;
+      }
+    }
+    if (currentGlobalEmotion === null && hasClips) break;
+  }
+  if (!hasClips) currentGlobalEmotion = null;
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col h-screen overflow-hidden">
       <GlobalHeader 
@@ -613,24 +726,35 @@ export default function StudioPage() {
 
       {/* Project Toolbar */}
       <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-30 relative">
-        <div className="flex items-center gap-4 w-1/4">
-          <input
-            type="text"
-            value={projectName}
-            onChange={(e) => setProjectName(e.target.value)}
-            placeholder="输入项目名称..."
-            className="w-full text-sm font-semibold text-slate-800 bg-transparent border-b border-transparent focus:border-cyan-400 outline-none transition-colors"
-          />
+        <div className="flex items-center gap-2 w-1/4">
+          <div className="relative w-full group">
+            <input
+              type="text"
+              value={projectName}
+              onChange={(e) => setProjectName(e.target.value)}
+              placeholder="未命名项目..."
+              className="w-full text-[15px] font-bold text-slate-800 bg-slate-100/50 hover:bg-slate-100 focus:bg-white border-2 border-transparent focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 rounded-xl px-4 py-2 outline-none transition-all placeholder:font-medium placeholder:text-slate-400"
+            />
+          </div>
         </div>
         <div className="flex items-center gap-3">
           
           {/* 第一阶段：项目前期准备 */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
             <label className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all cursor-pointer">
               {isImportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
               导入 PDF
               <input type="file" accept="application/pdf" className="hidden" onChange={handleImportPdf} disabled={isImportingPdf} />
             </label>
+            <div className="w-px h-4 bg-slate-200" />
+            <button onClick={handleCopyPrompt} className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
+              <Copy className="w-3.5 h-3.5" />
+              复制 AI 提示词
+            </button>
+            <button onClick={() => setIsImportScriptModalOpen(true)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
+              <FileText className="w-3.5 h-3.5" />
+              批量填入文案
+            </button>
             <div className="w-px h-4 bg-slate-200" />
             <button
               onClick={() => setShowHistory(true)}
@@ -660,7 +784,8 @@ export default function StudioPage() {
           <div className="flex items-center gap-1 p-1 bg-amber-50 rounded-xl border border-amber-100 shadow-sm">
             <div className="relative group">
               <button className="px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
-                <Smile className="w-3.5 h-3.5" /> 全局情绪
+                <Smile className="w-3.5 h-3.5" /> 
+                {currentGlobalEmotion ? `全局: ${currentGlobalEmotion.toUpperCase()}` : "全局情绪"}
               </button>
               <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1 z-50 hidden group-hover:block">
                 <div className="flex flex-col bg-white border border-amber-100 rounded-xl shadow-xl overflow-hidden min-w-[120px] py-1">
@@ -869,6 +994,41 @@ export default function StudioPage() {
                   </div>
                 ))
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Import Script Modal */}
+      {isImportScriptModalOpen && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-200">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <FileText className="w-5 h-5 text-cyan-600" />
+                批量导入大模型文案
+              </h3>
+              <button onClick={() => setIsImportScriptModalOpen(false)} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 p-1 rounded-lg transition-colors">
+                <XCircle className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 flex-1 flex flex-col gap-4 overflow-y-auto custom-scroll">
+              <p className="text-sm text-slate-600 bg-cyan-50 p-3 rounded-xl border border-cyan-100 leading-relaxed">
+                请将大模型生成的带有 <strong>[第X页]</strong> 或 <strong>【第X页】</strong> 标记的文本直接粘贴到下方。<br/>系统会自动解析标记，将文案填充到对应的页面中，并根据字数进行<strong>智能拆分</strong>。
+              </p>
+              <textarea
+                value={importScriptText}
+                onChange={e => setImportScriptText(e.target.value)}
+                placeholder="在此粘贴：\n\n[第1页]\n物理学中，我们常用……表示停顿！\n\n[第2页]\n化学式如二氧化碳，需要读出来……"
+                className="w-full flex-1 min-h-[300px] border-2 border-slate-200 rounded-xl p-4 text-[15px] leading-relaxed text-slate-700 outline-none hover:border-cyan-200 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 custom-scroll resize-none transition-all"
+              />
+            </div>
+            <div className="p-5 border-t border-slate-100 flex items-center justify-end gap-3 bg-slate-50">
+              <button onClick={() => setIsImportScriptModalOpen(false)} className="px-5 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-200 bg-slate-100 rounded-xl transition-colors">
+                取消
+              </button>
+              <button onClick={handleImportScript} className="px-5 py-2.5 text-sm font-bold text-white bg-cyan-600 hover:bg-cyan-700 rounded-xl shadow-sm transition-colors">
+                确认导入并智能拆分
+              </button>
             </div>
           </div>
         </div>
