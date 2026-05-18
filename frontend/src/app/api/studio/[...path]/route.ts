@@ -330,40 +330,6 @@ export async function POST(
             return NextResponse.json(await genRes.json());
         }
 
-        // ── route: render-video (proxy to backend) ───────────────────────────────────
-        if (subPath.startsWith("render-video")) {
-            const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
-            const targetUrl = `${backendUrl}/api/studio/${subPath}`;
-            try {
-                const renderRes = await fetch(targetUrl, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify(body),
-                });
-                if (!renderRes.ok) {
-                    const errText = await renderRes.text().catch(() => "");
-                    return NextResponse.json(
-                        { error: getUserFriendlyError(renderRes.status, errText) },
-                        { status: renderRes.status }
-                    );
-                }
-                
-                // Return the stream directly for file downloads
-                return new NextResponse(renderRes.body, {
-                    status: renderRes.status,
-                    headers: renderRes.headers,
-                });
-            } catch (err: any) {
-                console.error(`[Studio] render-video fetch failed:`, err);
-                return NextResponse.json(
-                    { error: `连接后端视频渲染服务失败: ${err.message}` },
-                    { status: 502 }
-                );
-            }
-        }
-
         return NextResponse.json(
             { error: `未知的 Studio 路由: ${subPath}` },
             { status: 404 }

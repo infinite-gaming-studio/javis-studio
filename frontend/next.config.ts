@@ -5,44 +5,35 @@ const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
 
 const nextConfig: NextConfig = {
   async rewrites() {
-    return [
-      // ═══════════════════════════════════════════════════════════════════════════
-      // Studio API routes
-      // ═══════════════════════════════════════════════════════════════════════════
-      
-      // Audio files served by backend
-      {
-        source: "/api/studio/audio/:session_id/:filename",
-        destination: `${backendUrl}/api/studio/audio/:session_id/:filename`,
-      },
-      
-      // Script generation - handled by backend
-      {
-        source: "/api/studio/script",
-        destination: `${backendUrl}/api/studio/script`,
-      },
-      
-      // Full pipeline generation - handled by backend
-      {
-        source: "/api/studio/generate",
-        destination: `${backendUrl}/api/studio/generate`,
-      },
+    return {
+      afterFiles: [
+        // ═══════════════════════════════════════════════════════════════════════════
+        // Studio API routes
+        // ═══════════════════════════════════════════════════════════════════════════
+        
+        // Audio files served by backend
+        {
+          source: "/api/studio/audio/:session_id/:filename",
+          destination: `${backendUrl}/api/studio/audio/:session_id/:filename`,
+        },
+        
+        // Script generation - handled by backend
+        {
+          source: "/api/studio/script",
+          destination: `${backendUrl}/api/studio/script`,
+        },
+        
+        // Full pipeline generation - handled by backend
+        {
+          source: "/api/studio/generate",
+          destination: `${backendUrl}/api/studio/generate`,
+        },
 
-      // Video conversion - handled by backend
-      {
-        source: "/api/studio/video/convert",
-        destination: `${backendUrl}/api/studio/video/convert`,
-      },
-
-      // Video rendering - handled by backend (image + audio → MP4)
-      {
-        source: "/api/studio/render-video/page",
-        destination: `${backendUrl}/api/studio/render-video/page`,
-      },
-      {
-        source: "/api/studio/render-video/project",
-        destination: `${backendUrl}/api/studio/render-video/project`,
-      },
+        // Video conversion - handled by backend
+        {
+          source: "/api/studio/video/convert",
+          destination: `${backendUrl}/api/studio/video/convert`,
+        },
       
       // TTS is handled by frontend API route to support external TTS APIs
       // This allows the frontend to proxy to user-configured TTS endpoints (e.g., ngrok)
@@ -82,7 +73,9 @@ const nextConfig: NextConfig = {
       // - /api/v1/tools/video-matcher/search -> frontend/src/app/api/v1/tools/video-matcher/search/route.ts
       // - /api/v1/tools/video-matcher/download/batch -> frontend/src/app/api/v1/tools/video-matcher/download/batch/route.ts
       // These frontend routes add proper header forwarding for API keys
-    ];
+      ],
+      fallback: []
+    };
   },
 };
 

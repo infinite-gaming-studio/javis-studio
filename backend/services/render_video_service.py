@@ -186,8 +186,8 @@ def render_page_mp4(
         "-i", img_path,
         "-i", audio_path,
         "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "18",
+        "-preset", "ultrafast",
+        "-crf", "23",  # slightly higher CRF is fine for static slides
         "-pix_fmt", "yuv420p",
         "-vf", scale_filter,
         "-c:a", "aac",

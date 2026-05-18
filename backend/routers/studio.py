@@ -347,14 +347,20 @@ async def render_project_video(
 
     work_dir = tempfile.mkdtemp(prefix="javis_project_video_")
     try:
-        # Render pages sequentially to avoid OOM on large PDFs
-        mp4_paths: List[str] = []
-        for page in req.pages:
-            if not page.image or not page.clips:
-                logger.warning("Skipping page %d: missing image or clips", page.page_index)
-                continue
-            mp4_path = await _render_one_page(page, work_dir)
-            mp4_paths.append(mp4_path)
+        # Render pages concurrently with a concurrency limit (e.g., 4)
+        # This prevents HTTP timeouts on large PDFs while avoiding CPU/RAM exhaustion
+        sem = asyncio.Semaphore(4)
+
+        async def _render_with_sem(p: PageRenderRequest) -> Optional[str]:
+            if not p.image or not p.clips:
+                logger.warning("Skipping page %d: missing image or clips", p.page_index)
+                return None
+            async with sem:
+                return await _render_one_page(p, work_dir)
+
+        tasks = [_render_with_sem(page) for page in req.pages]
+        results = await asyncio.gather(*tasks)
+        mp4_paths = [path for path in results if path is not None]
 
         if not mp4_paths:
             raise HTTPException(status_code=400, detail="No renderable pages (each page needs an image AND at least one audio clip)")
