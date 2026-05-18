@@ -261,24 +261,25 @@ export default function PageEditor({
               <Plus className="w-3.5 h-3.5" />
               添加旁白片段
             </button>
-            <div className="relative flex items-center bg-cyan-50 border border-cyan-100 hover:bg-cyan-100/80 rounded-lg px-2.5 py-1.5 transition-colors gap-1.5">
-              <Smile className="w-3.5 h-3.5 text-cyan-600" />
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) {
-                    handleUnifyEmotion(e.target.value);
-                    e.target.value = ""; // Reset selection after action
-                  }
-                }}
-                className="appearance-none text-xs font-bold text-cyan-700 bg-transparent outline-none pr-5 cursor-pointer"
-              >
-                <option value="" disabled>统一更改所有情绪...</option>
-                {Object.keys(EMOTION_COLORS).map(k => (
-                  <option key={k} value={k} className="bg-white text-slate-700">{k.toUpperCase()}</option>
-                ))}
-              </select>
-              <ChevronDown className="w-3 h-3 text-cyan-600 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <div className="relative group">
+              <button className="flex items-center bg-cyan-50 border border-cyan-100 hover:bg-cyan-100/80 rounded-lg px-2.5 py-1.5 transition-colors gap-1.5 text-xs font-bold text-cyan-700">
+                <Smile className="w-3.5 h-3.5 text-cyan-600" />
+                本页统一情绪
+                <ChevronDown className="w-3 h-3 text-cyan-600 ml-0.5 opacity-70" />
+              </button>
+              <div className="absolute left-0 top-full pt-1 z-50 hidden group-hover:block">
+                <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[130px] py-1">
+                  {Object.keys(EMOTION_COLORS).map(k => (
+                    <button 
+                      key={k} 
+                      onClick={() => handleUnifyEmotion(k)} 
+                      className="px-4 py-2 text-xs font-medium text-left text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors"
+                    >
+                      {k.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <button
               onClick={clearPage}
@@ -428,19 +429,28 @@ export default function PageEditor({
                     </button>
                   )}
 
-                  <div className="relative ml-2">
-                    <select
-                      value={clip.emotion_hint || "neutral"}
-                      onChange={(e) => updateClipEmotion(clip.id, e.target.value)}
-                      className={`appearance-none text-[11px] font-bold border rounded-full pl-3 pr-7 py-1 outline-none focus:ring-2 focus:ring-cyan-500/20 cursor-pointer transition-colors ${colorClass}`}
+                  <div className="relative group ml-2">
+                    <button
+                      className={`flex items-center gap-1.5 text-[11px] font-bold border rounded-full pl-3 pr-2 py-1 outline-none transition-colors cursor-pointer ${colorClass}`}
                     >
-                      {Object.keys(EMOTION_COLORS).map(k => (
-                        <option key={k} value={k} className="bg-white text-slate-700">
-                          {k.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="w-3 h-3 text-current absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-70" />
+                      {(clip.emotion_hint || "neutral").toUpperCase()}
+                      <ChevronDown className="w-3 h-3 text-current opacity-70" />
+                    </button>
+                    <div className="absolute right-0 top-full pt-1 z-50 hidden group-hover:block">
+                      <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[110px] py-1">
+                        {Object.keys(EMOTION_COLORS).map(k => (
+                          <button
+                            key={k}
+                            onClick={() => updateClipEmotion(clip.id, k)}
+                            className={`px-4 py-2 text-[11px] font-bold text-left hover:bg-slate-50 transition-colors ${
+                              clip.emotion_hint === k ? 'text-cyan-600' : 'text-slate-700'
+                            }`}
+                          >
+                            {k.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
 
                   <button
