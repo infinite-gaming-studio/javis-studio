@@ -460,8 +460,31 @@ export default function StudioPage() {
 
 ...以此类推`;
 
-    navigator.clipboard.writeText(prompt);
-    showToast("AI 提示词已复制，请前往大模型（如 ChatGPT）粘贴使用！", "success");
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(prompt).then(() => {
+          showToast("AI 提示词已复制，请前往大模型（如 ChatGPT）粘贴使用！", "success");
+        });
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = prompt;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-999999px";
+        textArea.style.top = "-999999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          showToast("AI 提示词已复制，请前往大模型（如 ChatGPT）粘贴使用！", "success");
+        } catch (err) {
+          showToast("复制失败，您的浏览器不支持此操作", "error");
+        }
+        textArea.remove();
+      }
+    } catch (error) {
+      showToast("复制失败", "error");
+    }
   };
 
   const handleImportScript = () => {
@@ -513,7 +536,7 @@ export default function StudioPage() {
       if (pageIndex >= 0 && pageIndex < newPages.length && content) {
         const chunks = splitText(content, 100); 
         const generatedClips = chunks.map((chunk, j) => ({
-          id: generateId() + \`_import_\${i}_\${j}\`,
+          id: generateId() + `_import_${i}_${j}`,
           text: chunk,
           emotion_hint: newPages[pageIndex].clips[0]?.emotion_hint || "neutral"
         }));
@@ -529,7 +552,7 @@ export default function StudioPage() {
     setPages(newPages);
     setIsImportScriptModalOpen(false);
     setImportScriptText("");
-    showToast(\`成功导入并拆分了 \${importedCount} 页的文案！\`, "success");
+    showToast(`成功导入并拆分了 ${importedCount} 页的文案！`, "success");
   };
 
   // ─── Video Rendering ───────────────────────────────────────────────────────
