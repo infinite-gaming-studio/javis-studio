@@ -1,5 +1,5 @@
 "use client";
-import { Plus, Trash2, Image as ImageIcon } from "lucide-react";
+import { Plus, Trash2, Image as ImageIcon, ChevronLeft } from "lucide-react";
 import { ProjectPage } from "@/lib/api";
 
 interface Props {
@@ -8,13 +8,23 @@ interface Props {
   onSelect: (index: number) => void;
   onAddPage: () => void;
   onDeletePage: (id: string, e: React.MouseEvent) => void;
+  onCollapse?: () => void;
 }
 
-export default function PageList({ pages, selectedIndex, onSelect, onAddPage, onDeletePage }: Props) {
+export default function PageList({ pages, selectedIndex, onSelect, onAddPage, onDeletePage, onCollapse }: Props) {
   return (
-    <div className="flex flex-col h-full bg-white border-r border-slate-200">
+    <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b border-slate-100 flex items-center justify-between shadow-sm relative z-10">
         <h3 className="font-semibold text-slate-800 text-sm">页面列表 ({pages.length})</h3>
+        {onCollapse && (
+          <button 
+            onClick={onCollapse}
+            className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            title="折叠列表"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        )}
       </div>
       
       <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scroll">

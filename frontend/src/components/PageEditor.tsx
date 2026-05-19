@@ -14,6 +14,7 @@ import {
 import { useNotification } from "@/lib/NotificationContext";
 
 const EMOTION_COLORS: Record<string, string> = {
+  default: "bg-slate-100 text-slate-600 border-slate-200",
   happy: "bg-yellow-50 text-yellow-700 border-yellow-200",
   calm: "bg-blue-50 text-blue-700 border-blue-200",
   sad: "bg-indigo-50 text-indigo-700 border-indigo-200",
@@ -22,7 +23,20 @@ const EMOTION_COLORS: Record<string, string> = {
   afraid: "bg-orange-50 text-orange-700 border-orange-200",
   disgusted: "bg-green-50 text-green-700 border-green-200",
   melancholic: "bg-purple-50 text-purple-700 border-purple-200",
-  neutral: "bg-slate-100 text-slate-700 border-slate-200",
+  neutral: "bg-slate-200/60 text-slate-700 border-slate-300",
+};
+
+const EMOTION_LABELS: Record<string, string> = {
+  default: "跟随全局 (默认)",
+  happy: "HAPPY / 开心",
+  calm: "CALM / 平静",
+  sad: "SAD / 悲伤",
+  angry: "ANGRY / 愤怒",
+  surprised: "SURPRISED / 惊讶",
+  afraid: "AFRAID / 恐惧",
+  disgusted: "DISGUSTED / 厌恶",
+  melancholic: "MELANCHOLIC / 忧郁",
+  neutral: "NEUTRAL / 中性(无情感)",
 };
 
 interface Props {
@@ -54,8 +68,13 @@ export default function PageEditor({
   const [expandedClipId, setExpandedClipId] = useState<string | null>(null);
   const [activeConfig, setActiveConfig] = useState<"ai" | "split" | null>(null);
   const [splitLimit, setSplitLimit] = useState<number>(100);
+  const [splitMode, setSplitMode] = useState<"limit" | "delimiter">("limit");
+  const [splitDelimiterType, setSplitDelimiterType] = useState<string>("\n");
+  const [splitDelimiter, setSplitDelimiter] = useState<string>("\n");
   const [aiPrompt, setAiPrompt] = useState<string>("");
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [pageEmotionSearch, setPageEmotionSearch] = useState("");
+  const [clipEmotionSearch, setClipEmotionSearch] = useState("");
 
   const updateTitle = (val: string) => onChange({ ...page, title: val });
 
@@ -143,47 +162,83 @@ export default function PageEditor({
 
   const executeSmartSplit = () => {
     const fullText = page.clips.map(c => c.text).join('\n\n').trim();
-    if (fullText.length < 10) {
-      if (showToast) showToast("当前页面文本过短，无需拆分", "info");
+    if (fullText.length < 1) {
+      if (showToast) showToast("当前页面没有文本内容，无需拆分", "info");
       setActiveConfig(null);
       return;
     }
-    
-    if (isNaN(splitLimit) || splitLimit < 10) {
-      if (showToast) showToast("请输入有效的字数限制 (大于10)", "error");
-      return;
-    }
-    
-    // Smart split logic: split by punctuation and then enforce length limit
-    const splitText = (text: string, maxLen: number): string[] => {
-      const segments: string[] = [];
-      let currentSegment = "";
-      const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+
+    let chunks: string[] = [];
+
+    if (splitMode === "limit") {
+      if (fullText.length < 10) {
+        if (showToast) showToast("当前页面文本过短，无需拆分", "info");
+        setActiveConfig(null);
+        return;
+      }
+      if (isNaN(splitLimit) || splitLimit < 10) {
+        if (showToast) showToast("请输入有效的字数限制 (大于10)", "error");
+        return;
+      }
       
-      for (const sentence of sentences) {
-        if (currentSegment.length + sentence.length <= maxLen) {
-          currentSegment += sentence;
-        } else {
-          if (currentSegment.trim()) segments.push(currentSegment.trim());
-          if (sentence.length > maxLen) {
-             let remaining = sentence;
-             while(remaining.length > 0) {
-                segments.push(remaining.slice(0, maxLen).trim());
-                remaining = remaining.slice(maxLen);
-             }
-             currentSegment = "";
+      // Smart split logic: split by punctuation and then enforce length limit
+      const splitText = (text: string, maxLen: number): string[] => {
+        const segments: string[] = [];
+        let currentSegment = "";
+        const sentences = text.match(/[^。！？.!?\n]+[。！？.!?\n]*/g) || [text];
+        
+        for (const sentence of sentences) {
+          if (currentSegment.length + sentence.length <= maxLen) {
+            currentSegment += sentence;
           } else {
-             currentSegment = sentence;
+            if (currentSegment.trim()) segments.push(currentSegment.trim());
+            if (sentence.length > maxLen) {
+               let remaining = sentence;
+               while(remaining.length > 0) {
+                  segments.push(remaining.slice(0, maxLen).trim());
+                  remaining = remaining.slice(maxLen);
+               }
+               currentSegment = "";
+            } else {
+               currentSegment = sentence;
+            }
           }
         }
-      }
-      if (currentSegment.trim()) segments.push(currentSegment.trim());
-      return segments;
-    };
+        if (currentSegment.trim()) segments.push(currentSegment.trim());
+        return segments;
+      };
 
-    const chunks = splitText(fullText, splitLimit);
+      chunks = splitText(fullText, splitLimit);
+    } else {
+      // Delimiter splitting
+      let sep = splitDelimiter;
+      if (sep === "\\n") {
+        sep = "\n";
+      }
+      
+      if (!sep) {
+        if (showToast) showToast("请输入有效的分隔符", "error");
+        return;
+      }
+
+      // Split the text by delimiter
+      if (sep === "\n") {
+        chunks = fullText.split(/\r?\n/);
+      } else {
+        chunks = fullText.split(sep);
+      }
+
+      // Filter out empty lines/segments (filters out consecutive delimiters/empty lines)
+      chunks = chunks.map(chunk => chunk.trim()).filter(chunk => chunk.length > 0);
+    }
+
+    if (chunks.length === 0) {
+      if (showToast) showToast("未拆分出有效段落", "info");
+      return;
+    }
+
     if (chunks.length <= 1 && page.clips.length === 1) {
-      if (showToast) showToast("在当前字数限制下，无需拆分", "info");
+      if (showToast) showToast("拆分结果与当前段落一致，无需拆分", "info");
       setActiveConfig(null);
       return;
     }
@@ -212,9 +267,9 @@ export default function PageEditor({
   }
 
   return (
-    <div className="flex flex-col h-full bg-slate-50/50">
+    <div className="flex flex-col h-full bg-white">
       {/* 头部信息 */}
-      <div className="p-6 md:p-8 border-b border-slate-200 bg-gradient-to-r from-white to-slate-50/50 shadow-sm z-10 flex gap-6 items-start">
+      <div className="p-6 md:p-8 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/30 z-10 flex gap-6 items-start">
         {/* PPT 页面截图上传/预览区 */}
         <div className="group relative w-56 aspect-video bg-slate-50 hover:bg-slate-100 rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 hover:border-cyan-400 flex items-center justify-center flex-shrink-0 transition-all shadow-sm mt-1">
           {page.image ? (
@@ -285,30 +340,58 @@ export default function PageEditor({
             <div className="relative group">
               <button className="flex items-center bg-cyan-50 border border-cyan-100 hover:bg-cyan-100/80 rounded-lg px-2.5 py-1.5 transition-colors gap-1.5 text-xs font-bold text-cyan-700">
                 <Smile className="w-3.5 h-3.5 text-cyan-600" />
-                {currentPageEmotion ? `本页: ${customEmotions.find(e => e.id === currentPageEmotion)?.name || currentPageEmotion.toUpperCase()}` : "本页统一情绪"}
+                {currentPageEmotion ? `本页: ${customEmotions.find(e => e.id === currentPageEmotion)?.name || (EMOTION_LABELS[currentPageEmotion] || currentPageEmotion.toUpperCase())}` : "本页统一情绪"}
                 <ChevronDown className="w-3 h-3 text-cyan-600 ml-0.5 opacity-70" />
               </button>
-              <div className="absolute left-0 top-full pt-1 z-50 hidden group-hover:block">
-                <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[130px] py-1">
-                  {Object.keys(EMOTION_COLORS).map(k => (
-                    <button 
-                      key={k} 
-                      onClick={() => handleUnifyEmotion(k)} 
-                      className="px-4 py-2 text-xs font-medium text-left text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors"
-                    >
-                      {k.toUpperCase()}
-                    </button>
-                  ))}
-                  {customEmotions.length > 0 && <div className="h-px bg-slate-100 my-1" />}
-                  {customEmotions.map(ce => (
-                    <button 
-                      key={ce.id} 
-                      onClick={() => handleUnifyEmotion(ce.id)} 
-                      className="px-4 py-2 text-xs font-medium text-left text-indigo-700 hover:bg-indigo-50 transition-colors"
-                    >
-                      {ce.name}
-                    </button>
-                  ))}
+              <div className="absolute left-0 top-full pt-1.5 z-[99] hidden group-hover:block">
+                <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[170px] max-h-[300px]">
+                  {/* Search box */}
+                  <div className="px-2 py-1.5 border-b border-slate-100 bg-slate-50">
+                    <input 
+                      type="text" 
+                      placeholder="搜索情绪..." 
+                      value={pageEmotionSearch}
+                      onChange={(e) => setPageEmotionSearch(e.target.value)}
+                      className="w-full text-xs px-2 py-1 border border-slate-200 rounded focus:outline-none focus:border-cyan-500 bg-white"
+                    />
+                  </div>
+                  {/* Scrollable list */}
+                  <div className="overflow-y-auto custom-scroll flex-1 py-1">
+                    {Object.keys(EMOTION_COLORS).filter(k => 
+                      k.toLowerCase().includes(pageEmotionSearch.toLowerCase()) || 
+                      (EMOTION_LABELS[k] || "").toLowerCase().includes(pageEmotionSearch.toLowerCase())
+                    ).map(k => (
+                      <button 
+                        key={k} 
+                        onClick={() => {
+                          handleUnifyEmotion(k);
+                          setPageEmotionSearch("");
+                        }} 
+                        className="w-full px-4 py-2 text-xs font-medium text-left text-slate-700 hover:bg-cyan-50 hover:text-cyan-700 transition-colors"
+                      >
+                        {EMOTION_LABELS[k] || k.toUpperCase()}
+                      </button>
+                    ))}
+                    {customEmotions.filter(ce => ce.name.toLowerCase().includes(pageEmotionSearch.toLowerCase())).length > 0 && <div className="h-px bg-slate-100 my-1" />}
+                    {customEmotions.filter(ce => ce.name.toLowerCase().includes(pageEmotionSearch.toLowerCase())).map(ce => (
+                      <button 
+                        key={ce.id} 
+                        onClick={() => {
+                          handleUnifyEmotion(ce.id);
+                          setPageEmotionSearch("");
+                        }} 
+                        className="w-full px-4 py-2 text-xs font-medium text-left text-indigo-700 hover:bg-indigo-50 transition-colors"
+                      >
+                        {ce.name}
+                      </button>
+                    ))}
+                    {Object.keys(EMOTION_COLORS).filter(k => 
+                      k.toLowerCase().includes(pageEmotionSearch.toLowerCase()) || 
+                      (EMOTION_LABELS[k] || "").toLowerCase().includes(pageEmotionSearch.toLowerCase())
+                    ).length === 0 && customEmotions.filter(ce => ce.name.toLowerCase().includes(pageEmotionSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-3 text-xs text-slate-400 text-center">无匹配选项</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -331,21 +414,78 @@ export default function PageEditor({
             <div className="p-2 bg-orange-100 text-orange-600 rounded-lg"><Scissors className="w-4 h-4" /></div>
             <div>
               <h4 className="text-sm font-bold text-orange-900">配置智能分段</h4>
-              <p className="text-xs text-orange-700/80 mt-0.5">自动根据标点符号拆分当前页面的所有长段落。</p>
+              <p className="text-xs text-orange-700/80 mt-0.5">根据字数限制或特定分隔符将本页长旁白进行快速切分。</p>
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold text-orange-800">单段最大字数：</label>
-              <input 
-                type="number" 
-                value={splitLimit} 
-                onChange={(e) => setSplitLimit(Number(e.target.value))} 
-                className="w-20 px-2 py-1.5 text-sm font-mono font-bold text-orange-900 bg-white border border-orange-200 rounded-lg outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all"
-                min="10"
-                max="1000"
-              />
+            <div className="flex items-center gap-2 bg-orange-100/50 p-1 rounded-lg border border-orange-200/40">
+              <button
+                onClick={() => setSplitMode("limit")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                  splitMode === "limit"
+                    ? "bg-white text-orange-800 shadow-sm"
+                    : "text-orange-700 hover:bg-white/40"
+                }`}
+              >
+                按最大字数
+              </button>
+              <button
+                onClick={() => setSplitMode("delimiter")}
+                className={`px-3 py-1 text-xs font-semibold rounded-md transition-all ${
+                  splitMode === "delimiter"
+                    ? "bg-white text-orange-800 shadow-sm"
+                    : "text-orange-700 hover:bg-white/40"
+                }`}
+              >
+                按特定分隔符
+              </button>
             </div>
+
+            <div className="w-px h-6 bg-orange-200/60" />
+
+            {splitMode === "limit" ? (
+              <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                <label className="text-xs font-semibold text-orange-800">单段最大字数：</label>
+                <input 
+                  type="number" 
+                  value={splitLimit} 
+                  onChange={(e) => setSplitLimit(Number(e.target.value))} 
+                  className="w-20 px-2.5 py-1.5 text-xs font-mono font-bold text-orange-950 bg-white border border-orange-200 rounded-lg outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all shadow-sm"
+                  min="10"
+                  max="1000"
+                />
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 animate-in fade-in duration-200">
+                <label className="text-xs font-semibold text-orange-800">分隔符类型：</label>
+                <select
+                  value={splitDelimiterType}
+                  onChange={(e) => {
+                    setSplitDelimiterType(e.target.value);
+                    if (e.target.value !== "custom") {
+                      setSplitDelimiter(e.target.value);
+                    }
+                  }}
+                  className="px-2 py-1.5 text-xs font-semibold text-orange-950 bg-white border border-orange-200 rounded-lg outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all shadow-sm"
+                >
+                  <option value="\n">换行 / 空行 (回车)</option>
+                  <option value="|">竖线 |</option>
+                  <option value="，">中文逗号 ，</option>
+                  <option value="。">中文句号 。</option>
+                  <option value="custom">自定义符号...</option>
+                </select>
+                {splitDelimiterType === "custom" && (
+                  <input 
+                    type="text" 
+                    value={splitDelimiter} 
+                    onChange={(e) => setSplitDelimiter(e.target.value)} 
+                    placeholder="例如: / 或 -"
+                    className="w-24 px-2 py-1.5 text-xs font-bold text-orange-950 bg-white border border-orange-200 rounded-lg outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200 transition-all shadow-sm"
+                  />
+                )}
+              </div>
+            )}
+            
             <div className="w-px h-6 bg-orange-200" />
             <button onClick={() => setActiveConfig(null)} className="px-3 py-1.5 text-xs font-semibold text-orange-700 hover:bg-orange-100 rounded-lg transition-colors">取消</button>
             <button onClick={executeSmartSplit} className="px-4 py-1.5 text-xs font-bold text-white bg-orange-500 hover:bg-orange-600 shadow-sm shadow-orange-500/20 rounded-lg transition-colors">确认拆分</button>
@@ -393,19 +533,19 @@ export default function PageEditor({
         {page.clips.map((clip, idx) => {
           const isExpanded = expandedClipId === clip.id;
           const isPlaying = currentPlayingClipId === clip.id;
-          const currentHint = clip.emotion_hint || "neutral";
+          const currentHint = clip.emotion_hint || "default";
           const isCustomEmotion = customEmotions.some(e => e.id === currentHint);
           const colorClass = isCustomEmotion 
             ? "bg-indigo-50 text-indigo-700 border-indigo-200"
-            : (EMOTION_COLORS[currentHint.toLowerCase()] || EMOTION_COLORS.neutral);
+            : (EMOTION_COLORS[currentHint.toLowerCase()] || EMOTION_COLORS.default);
           const displayLabel = isCustomEmotion 
             ? customEmotions.find(e => e.id === currentHint)?.name 
-            : currentHint.toUpperCase();
+            : EMOTION_LABELS[currentHint.toLowerCase()] || currentHint.toUpperCase();
 
           return (
             <div
               key={clip.id}
-              className={`group relative rounded-2xl backdrop-blur-md border shadow-sm hover:shadow-lg py-4 px-6 space-y-3 transition-all duration-300 ${
+              className={`group relative rounded-2xl backdrop-blur-md border shadow-sm hover:shadow-lg py-4 px-6 space-y-3 transition-all duration-300 hover:z-20 ${
                 isPlaying 
                   ? 'bg-cyan-50/60 border-cyan-300 ring-2 ring-cyan-200 shadow-lg scale-[1.02] z-10' 
                   : 'bg-white/60 border-slate-200 hover:border-cyan-200'
@@ -467,38 +607,66 @@ export default function PageEditor({
                     </button>
                   )}
 
-                  <div className="relative group ml-2">
+                  <div className="relative group/clip-dropdown ml-2">
                     <button
                       className={`flex items-center gap-1.5 text-[11px] font-bold border rounded-full pl-3 pr-2 py-1 outline-none transition-colors cursor-pointer ${colorClass}`}
                     >
                       {displayLabel}
                       <ChevronDown className="w-3 h-3 text-current opacity-70" />
                     </button>
-                    <div className="absolute right-0 top-full pt-1 z-50 hidden group-hover:block">
-                      <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[110px] py-1">
-                        {Object.keys(EMOTION_COLORS).map(k => (
-                          <button
-                            key={k}
-                            onClick={() => updateClipEmotion(clip.id, k)}
-                            className={`px-4 py-2 text-[11px] font-bold text-left hover:bg-slate-50 transition-colors ${
-                              clip.emotion_hint === k ? 'text-cyan-600' : 'text-slate-700'
-                            }`}
-                          >
-                            {k.toUpperCase()}
-                          </button>
-                        ))}
-                        {customEmotions.length > 0 && <div className="h-px bg-slate-100 my-1" />}
-                        {customEmotions.map(ce => (
-                          <button
-                            key={ce.id}
-                            onClick={() => updateClipEmotion(clip.id, ce.id)}
-                            className={`px-4 py-2 text-[11px] font-bold text-left hover:bg-indigo-50 transition-colors ${
-                              clip.emotion_hint === ce.id ? 'text-indigo-600' : 'text-indigo-700/80'
-                            }`}
-                          >
-                            {ce.name}
-                          </button>
-                        ))}
+                    <div className="absolute right-0 top-full pt-1 z-[99] hidden group-hover/clip-dropdown:block">
+                      <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[170px] max-h-[280px] flex flex-col">
+                        {/* Search input */}
+                        <div className="px-2 py-1.5 border-b border-slate-100 bg-slate-50">
+                          <input 
+                            type="text" 
+                            placeholder="搜索情绪..." 
+                            value={clipEmotionSearch}
+                            onChange={(e) => setClipEmotionSearch(e.target.value)}
+                            className="w-full text-xs px-2 py-1 border border-slate-200 rounded focus:outline-none focus:border-cyan-500 bg-white"
+                          />
+                        </div>
+                        {/* Scrollable list */}
+                        <div className="overflow-y-auto custom-scroll flex-1 py-1">
+                          {Object.keys(EMOTION_COLORS).filter(k => 
+                            k.toLowerCase().includes(clipEmotionSearch.toLowerCase()) || 
+                            (EMOTION_LABELS[k] || "").toLowerCase().includes(clipEmotionSearch.toLowerCase())
+                          ).map(k => (
+                            <button
+                              key={k}
+                              onClick={() => {
+                                updateClipEmotion(clip.id, k);
+                                setClipEmotionSearch("");
+                              }}
+                              className={`w-full px-4 py-2 text-[11px] font-bold text-left hover:bg-slate-50 transition-colors ${
+                                (clip.emotion_hint || 'default') === k ? 'text-cyan-600' : 'text-slate-700'
+                              }`}
+                            >
+                              {EMOTION_LABELS[k] || k.toUpperCase()}
+                            </button>
+                          ))}
+                          {customEmotions.filter(ce => ce.name.toLowerCase().includes(clipEmotionSearch.toLowerCase())).length > 0 && <div className="h-px bg-slate-100 my-1" />}
+                          {customEmotions.filter(ce => ce.name.toLowerCase().includes(clipEmotionSearch.toLowerCase())).map(ce => (
+                            <button
+                              key={ce.id}
+                              onClick={() => {
+                                updateClipEmotion(clip.id, ce.id);
+                                setClipEmotionSearch("");
+                              }}
+                              className={`w-full px-4 py-2 text-[11px] font-bold text-left hover:bg-indigo-50 transition-colors ${
+                                clip.emotion_hint === ce.id ? 'text-indigo-600' : 'text-indigo-700/80'
+                              }`}
+                            >
+                              {ce.name}
+                            </button>
+                          ))}
+                          {Object.keys(EMOTION_COLORS).filter(k => 
+                            k.toLowerCase().includes(clipEmotionSearch.toLowerCase()) || 
+                            (EMOTION_LABELS[k] || "").toLowerCase().includes(clipEmotionSearch.toLowerCase())
+                          ).length === 0 && customEmotions.filter(ce => ce.name.toLowerCase().includes(clipEmotionSearch.toLowerCase())).length === 0 && (
+                            <div className="px-4 py-3 text-xs text-slate-400 text-center">无匹配选项</div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </div>

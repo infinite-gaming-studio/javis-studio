@@ -28,6 +28,7 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
   const [editForm, setEditForm] = useState<CustomEmotion>(DEFAULT_EMOTION);
   const [importText, setImportText] = useState("");
   const [showImport, setShowImport] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   useEffect(() => {
     if (isOpen) {
@@ -35,6 +36,7 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
       setEmotions(settings.customEmotions || []);
       setEditingId(null);
       setShowImport(false);
+      setSearchQuery("");
     }
   }, [isOpen]);
 
@@ -169,43 +171,63 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                 <Download className="w-4 h-4" />
               </button>
             </div>
+            {/* Search Input */}
+            <div className="px-3 py-2 border-b border-slate-100/80 bg-slate-50/50">
+              <input
+                type="text"
+                placeholder="搜索预设..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-white placeholder-slate-400 font-medium"
+              />
+            </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scroll">
-              {emotions.length === 0 && (
-                <div className="text-center py-10 text-slate-400 text-sm">
-                  暂无自定义情感，请新建或导入
-                </div>
-              )}
-              {emotions.map(emo => (
-                <div 
-                  key={emo.id}
-                  onClick={() => handleEdit(emo)}
-                  className={`group p-3 rounded-xl border cursor-pointer transition-all ${
-                    editingId === emo.id 
-                      ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
-                      : 'bg-white border-slate-200 hover:border-indigo-200'
-                  }`}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <h4 className="font-bold text-slate-800 text-sm">{emo.name}</h4>
-                      <div className="flex gap-2 mt-1.5">
-                        <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-mono tracking-tighter">
-                          {emo.mode}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100/50 text-indigo-500 rounded uppercase font-mono tracking-tighter">
-                          a={emo.alpha.toFixed(2)}
-                        </span>
-                      </div>
+              {(() => {
+                const filtered = emotions.filter(emo => 
+                  emo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  (emo.text || "").toLowerCase().includes(searchQuery.toLowerCase())
+                );
+                
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-10 text-slate-400 text-sm">
+                      {searchQuery ? "无匹配的预设" : "暂无自定义情感，请新建或导入"}
                     </div>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleDelete(emo.id); }}
-                      className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  );
+                }
+
+                return filtered.map(emo => (
+                  <div 
+                    key={emo.id}
+                    onClick={() => handleEdit(emo)}
+                    className={`group p-3 rounded-xl border cursor-pointer transition-all ${
+                      editingId === emo.id 
+                        ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                        : 'bg-white border-slate-200 hover:border-indigo-200'
+                    }`}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-sm">{emo.name}</h4>
+                        <div className="flex gap-2 mt-1.5">
+                          <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-mono tracking-tighter">
+                            {emo.mode}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100/50 text-indigo-500 rounded uppercase font-mono tracking-tighter">
+                            a={emo.alpha.toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDelete(emo.id); }}
+                        className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ));
+              })()}
             </div>
           </div>
 

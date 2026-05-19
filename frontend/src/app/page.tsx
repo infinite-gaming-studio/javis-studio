@@ -22,7 +22,7 @@ import {
 import { useNotification } from "@/lib/NotificationContext";
 import JSZip from "jszip";
 
-import { XCircle, History, Trash2, Sparkles, Wand2, FileUp, Loader2, Download, Film, Clapperboard, Smile, Volume2, Copy, FileText } from "lucide-react";
+import { XCircle, History, Trash2, Sparkles, Wand2, FileUp, Loader2, Download, Film, Clapperboard, Smile, Volume2, Copy, FileText, ChevronDown, FolderClosed, LayoutList, ChevronRight } from "lucide-react";
 import PageList from "@/components/PageList";
 import PageEditor from "@/components/PageEditor";
 import PageAudioPlayer from "@/components/PageAudioPlayer";
@@ -109,6 +109,8 @@ export default function StudioPage() {
   const [isImportScriptModalOpen, setIsImportScriptModalOpen] = useState(false);
   const [importScriptText, setImportScriptText] = useState("");
   const [customEmotions, setCustomEmotions] = useState<any[]>([]);
+  const [globalEmotionSearch, setGlobalEmotionSearch] = useState("");
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const loadCustomEmotions = useCallback(() => {
     setCustomEmotions(getSettings().customEmotions || []);
@@ -300,7 +302,7 @@ export default function StudioPage() {
           pageIndex: startIndex + i - 1,
           image: dataUrl,
           title: file.name.replace('.pdf', ''),
-          clips: [{ id: generateId() + '_clip', text: "", emotion_hint: "neutral" }]
+          clips: [{ id: generateId() + '_clip', text: "", emotion_hint: "default" }]
         });
       }
 
@@ -343,7 +345,7 @@ export default function StudioPage() {
       const newClips: AudioClip[] = data.script.map((s: any) => ({
         id: generateId(),
         text: s.text,
-        emotion_hint: s.emotion_hint || "neutral"
+        emotion_hint: s.emotion_hint || "default"
       }));
 
       handleUpdatePage({ ...page, clips: newClips });
@@ -365,12 +367,51 @@ export default function StudioPage() {
     setGeneratingAudioIds(prev => [...prev, clipId]);
     try {
       let mergedSettings = { ...voiceSettings };
-      const customEmo = customEmotions.find(e => e.id === clip.emotion_hint);
+      const emoHint = clip.emotion_hint || "default";
+      const customEmo = customEmotions.find(e => e.id === emoHint);
+      
       if (customEmo) {
+        // Priority 1: Custom Emotion Override
         mergedSettings.emotion_mode = customEmo.mode;
         mergedSettings.emo_alpha = customEmo.alpha;
-        if (customEmo.mode === "vector") mergedSettings.emo_vector = customEmo.vector;
-        if (customEmo.mode === "text") mergedSettings.emo_text = customEmo.text;
+        
+        // Clear other fields to keep the configuration clean
+        mergedSettings.emo_audio_prompt = undefined;
+        mergedSettings.emo_vector = undefined;
+        mergedSettings.emo_text = undefined;
+        
+        if (customEmo.mode === "vector") {
+          mergedSettings.emo_vector = customEmo.vector;
+        } else if (customEmo.mode === "text") {
+          mergedSettings.emo_text = customEmo.text;
+        }
+      } else if (emoHint !== "default") {
+        // Priority 2: Standard Emotion Override (happy, calm, etc.)
+        // Force vector mode with standard vector
+        mergedSettings.emotion_mode = "vector";
+        // Keep the global alpha for intensity, or use 1.0
+        mergedSettings.emo_alpha = voiceSettings.emo_alpha !== undefined ? voiceSettings.emo_alpha : 1.0;
+        
+        // Clear other fields
+        mergedSettings.emo_audio_prompt = undefined;
+        mergedSettings.emo_text = undefined;
+        
+        // Build 8D vector
+        const vectors: Record<string, number[]> = {
+          happy:        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          angry:        [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          sad:          [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+          afraid:       [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+          disgusted:    [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+          melancholic:  [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+          surprised:    [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+          calm:         [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+          neutral:      [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        };
+        mergedSettings.emo_vector = vectors[emoHint.toLowerCase()] || new Array(8).fill(0);
+      } else {
+        // Priority 3: Default / Neutral (Follow global voiceSettings)
+        // No override, mergedSettings is exactly voiceSettings
       }
       
       const version = await ttsSingleVersion(clip.text, mergedSettings);
@@ -448,7 +489,19 @@ export default function StudioPage() {
   };
 
   const handleUnifyAllEmotionsProjectWide = (emotion: string) => {
-    const emotionName = customEmotions.find(e => e.id === emotion)?.name || emotion.toUpperCase();
+    const standardLabels: Record<string, string> = {
+      happy: "开心",
+      calm: "平静",
+      sad: "悲伤",
+      angry: "愤怒",
+      surprised: "惊讶",
+      afraid: "恐惧",
+      disgusted: "厌恶",
+      melancholic: "忧郁",
+      neutral: "中性 (强制无情感)",
+      default: "默认 (跟随全局)"
+    };
+    const emotionName = customEmotions.find(e => e.id === emotion)?.name || standardLabels[emotion.toLowerCase()] || emotion.toUpperCase();
     showConfirm({
       title: "全局统一更改情绪",
       message: `确定要将整个项目所有页面的旁白情绪都更改为 "${emotionName}" 吗？`,
@@ -560,12 +613,12 @@ export default function StudioPage() {
         const generatedClips = chunks.map((chunk, j) => ({
           id: generateId() + `_import_${i}_${j}`,
           text: chunk,
-          emotion_hint: newPages[pageIndex].clips[0]?.emotion_hint || "neutral"
+          emotion_hint: newPages[pageIndex].clips[0]?.emotion_hint || "default"
         }));
         
         newPages[pageIndex] = {
           ...newPages[pageIndex],
-          clips: generatedClips.length > 0 ? generatedClips : [{ id: generateId(), text: "", emotion_hint: "neutral" }]
+          clips: generatedClips.length > 0 ? generatedClips : [{ id: generateId(), text: "", emotion_hint: "default" }]
         };
         importedCount++;
       }
@@ -750,7 +803,7 @@ export default function StudioPage() {
   for (const p of pages) {
     for (const c of p.clips) {
       hasClips = true;
-      const emo = c.emotion_hint || 'neutral';
+      const emo = c.emotion_hint || 'default';
       if (!currentGlobalEmotion) {
         currentGlobalEmotion = emo;
       } else if (currentGlobalEmotion !== emo) {
@@ -770,96 +823,176 @@ export default function StudioPage() {
       />
 
       {/* Project Toolbar */}
-      <div className="bg-white border-b border-slate-200 px-6 py-3 flex items-center justify-between shadow-sm z-30 relative">
+      <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-30 relative">
         <div className="flex items-center gap-2 w-1/4">
-          <div className="relative w-full group">
+          <div className="relative w-full group flex items-center">
+            <FolderClosed className="absolute left-3.5 w-4 h-4 text-slate-400 group-hover:text-cyan-500 group-focus-within:text-cyan-500 transition-colors pointer-events-none" />
             <input
               type="text"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
               placeholder="未命名项目..."
-              className="w-full text-[15px] font-bold text-slate-800 bg-slate-100/50 hover:bg-slate-100 focus:bg-white border-2 border-transparent focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 rounded-xl px-4 py-2 outline-none transition-all placeholder:font-medium placeholder:text-slate-400"
+              className="w-full text-[14px] font-bold text-slate-800 bg-slate-50 hover:bg-slate-100/80 focus:bg-white border border-slate-200 hover:border-slate-300 focus:border-cyan-400 focus:ring-4 focus:ring-cyan-500/10 rounded-xl pl-10 pr-4 py-2.5 outline-none transition-all placeholder:font-medium placeholder:text-slate-400 shadow-sm"
             />
           </div>
         </div>
         <div className="flex items-center gap-3">
           
           {/* 第一阶段：项目前期准备 */}
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 shadow-sm flex-shrink-0">
-            <label className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all cursor-pointer">
-              {isImportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5" />}
-              导入 PDF
-              <input type="file" accept="application/pdf" className="hidden" onChange={handleImportPdf} disabled={isImportingPdf} />
-            </label>
-            <div className="w-px h-4 bg-slate-200" />
-            <button onClick={handleCopyPrompt} className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
-              <Copy className="w-3.5 h-3.5" />
-              复制 AI 提示词
-            </button>
-            <button onClick={() => setIsImportScriptModalOpen(true)} className="px-3 py-1.5 text-xs font-medium text-emerald-600 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-2xl border border-slate-200/60 shadow-sm flex-shrink-0">
+            <button onClick={() => setIsImportScriptModalOpen(true)} className="px-4 py-2.5 text-xs font-bold text-emerald-600 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all">
               <FileText className="w-3.5 h-3.5" />
               批量填入文案
             </button>
             <div className="w-px h-4 bg-slate-200" />
-            <button onClick={() => setIsEmotionLibraryOpen(true)} className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
+            <button onClick={() => setIsEmotionLibraryOpen(true)} className="px-4 py-2.5 text-xs font-bold text-indigo-600 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all">
               <Smile className="w-3.5 h-3.5" />
               情感预设库
             </button>
             <div className="w-px h-4 bg-slate-200" />
             <button
-              onClick={() => setShowHistory(true)}
-              className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all"
-            >
-              <History className="w-3.5 h-3.5" />
-              历史
-            </button>
-            <div className="w-px h-4 bg-slate-200" />
-            <button
               onClick={saveCurrentProject}
-              className="px-3 py-1.5 text-xs font-medium text-cyan-700 hover:bg-cyan-50 hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all"
+              className="px-4 py-2.5 text-xs font-bold text-cyan-700 hover:bg-cyan-50 hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all"
             >
               <Sparkles className="w-3.5 h-3.5" />
               保存项目
             </button>
             <div className="w-px h-4 bg-slate-200" />
-            <button
-              onClick={handleClearAll}
-              className="px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 hover:shadow-sm rounded-lg transition-all"
-            >
-              清空
-            </button>
+            
+            {/* 更多操作下拉菜单 */}
+            <div className="relative group/more-dropdown">
+              <button className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all">
+                <span>更多</span>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+              </button>
+              <div className="absolute right-0 top-full pt-1.5 z-[99] hidden group-hover/more-dropdown:block">
+                <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[170px] p-1.5">
+                  <label className="px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg flex items-center gap-2 transition-all cursor-pointer">
+                    {isImportingPdf ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <FileUp className="w-3.5 h-3.5 text-slate-400" />}
+                    <span>导入 PDF</span>
+                    <input type="file" accept="application/pdf" className="hidden" onChange={handleImportPdf} disabled={isImportingPdf} />
+                  </label>
+                  
+                  <button onClick={handleCopyPrompt} className="w-full px-3.5 py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50/50 rounded-lg flex items-center gap-2 transition-all text-left">
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>复制 AI 提示词</span>
+                  </button>
+                  
+                  <button onClick={() => setShowHistory(true)} className="w-full px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg flex items-center gap-2 transition-all text-left">
+                    <History className="w-3.5 h-3.5 text-slate-400" />
+                    <span>历史记录</span>
+                  </button>
+                  
+                  <div className="h-px bg-slate-100 my-1" />
+                  
+                  <button onClick={handleClearAll} className="w-full px-3.5 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-lg flex items-center gap-2 transition-all text-left">
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>清空当前项目</span>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* 第二阶段：中期批量生成 */}
-          <div className="flex items-center gap-1 p-1 bg-amber-50 rounded-xl border border-amber-100 shadow-sm">
-            <div className="relative group">
-              <button className="px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
+          <div className="flex items-center gap-1.5 p-1 bg-amber-50/60 rounded-2xl border border-amber-200/70 shadow-sm">
+            <div className="relative group/global-dropdown">
+              <button className="px-4 py-2.5 text-xs font-bold text-amber-700 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all">
                 <Smile className="w-3.5 h-3.5" /> 
                 {currentGlobalEmotion 
-                  ? `全局: ${customEmotions.find(e => e.id === currentGlobalEmotion)?.name || currentGlobalEmotion.toUpperCase()}` 
+                  ? `全局: ${customEmotions.find(e => e.id === currentGlobalEmotion)?.name || {
+                      happy: "开心",
+                      calm: "平静",
+                      sad: "悲伤",
+                      angry: "愤怒",
+                      surprised: "惊讶",
+                      afraid: "恐惧",
+                      disgusted: "厌恶",
+                      melancholic: "忧郁",
+                      neutral: "中性 (强制无情感)",
+                      default: "默认 (跟随全局)"
+                    }[currentGlobalEmotion.toLowerCase()] || currentGlobalEmotion.toUpperCase()}` 
                   : "全局情绪"}
               </button>
-              <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1 z-50 hidden group-hover:block">
-                <div className="flex flex-col bg-white border border-amber-100 rounded-xl shadow-xl overflow-hidden min-w-[120px] py-1 max-h-[300px] overflow-y-auto custom-scroll">
-                  {EMOTION_KEYS.map(k => (
-                    <button 
-                      key={k} 
-                      onClick={() => handleUnifyAllEmotionsProjectWide(k)} 
-                      className="px-4 py-2 text-xs font-medium text-left text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
-                    >
-                      {k.toUpperCase()}
-                    </button>
-                  ))}
-                  {customEmotions.length > 0 && <div className="h-px bg-slate-100 my-1" />}
-                  {customEmotions.map(ce => (
-                    <button 
-                      key={ce.id} 
-                      onClick={() => handleUnifyAllEmotionsProjectWide(ce.id)} 
-                      className="px-4 py-2 text-xs font-medium text-left text-indigo-700 hover:bg-indigo-50 transition-colors"
-                    >
-                      {ce.name}
-                    </button>
-                  ))}
+              <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1.5 z-[99] hidden group-hover/global-dropdown:block">
+                <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[170px] max-h-[300px] flex flex-col">
+                  {/* Search box */}
+                  <div className="px-2 py-1.5 border-b border-slate-100 bg-slate-50">
+                    <input 
+                      type="text" 
+                      placeholder="搜索情绪..." 
+                      value={globalEmotionSearch}
+                      onChange={(e) => setGlobalEmotionSearch(e.target.value)}
+                      className="w-full text-xs px-2 py-1 border border-slate-200 rounded focus:outline-none focus:border-cyan-500 bg-white"
+                    />
+                  </div>
+                  {/* Scrollable list */}
+                  <div className="overflow-y-auto custom-scroll flex-1 py-1">
+                    {EMOTION_KEYS.filter(k => {
+                      const label = {
+                        happy: "HAPPY / 开心",
+                        calm: "CALM / 平静",
+                        sad: "SAD / 悲伤",
+                        angry: "ANGRY / 愤怒",
+                        surprised: "SURPRISED / 惊讶",
+                        afraid: "AFRAID / 恐惧",
+                        disgusted: "DISGUSTED / 厌恶",
+                        melancholic: "MELANCHOLIC / 忧郁",
+                        neutral: "NEUTRAL / 中性",
+                      }[k.toLowerCase()] || k.toUpperCase();
+                      return k.toLowerCase().includes(globalEmotionSearch.toLowerCase()) || label.toLowerCase().includes(globalEmotionSearch.toLowerCase());
+                    }).map(k => (
+                      <button 
+                        key={k} 
+                        onClick={() => {
+                          handleUnifyAllEmotionsProjectWide(k);
+                          setGlobalEmotionSearch("");
+                        }} 
+                        className="w-full px-4 py-2 text-xs font-medium text-left text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                      >
+                        {{
+                          happy: "HAPPY / 开心",
+                          calm: "CALM / 平静",
+                          sad: "SAD / 悲伤",
+                          angry: "ANGRY / 愤怒",
+                          surprised: "SURPRISED / 惊讶",
+                          afraid: "AFRAID / 恐惧",
+                          disgusted: "DISGUSTED / 厌恶",
+                          melancholic: "MELANCHOLIC / 忧郁",
+                          neutral: "NEUTRAL / 中性",
+                        }[k.toLowerCase()] || k.toUpperCase()}
+                      </button>
+                    ))}
+                    {customEmotions.filter(ce => ce.name.toLowerCase().includes(globalEmotionSearch.toLowerCase())).length > 0 && <div className="h-px bg-slate-100 my-1" />}
+                    {customEmotions.filter(ce => ce.name.toLowerCase().includes(globalEmotionSearch.toLowerCase())).map(ce => (
+                      <button 
+                        key={ce.id} 
+                        onClick={() => {
+                          handleUnifyAllEmotionsProjectWide(ce.id);
+                          setGlobalEmotionSearch("");
+                        }} 
+                        className="w-full px-4 py-2 text-xs font-medium text-left text-indigo-700 hover:bg-indigo-50 transition-colors"
+                      >
+                        {ce.name}
+                      </button>
+                    ))}
+                    {EMOTION_KEYS.filter(k => {
+                      const label = {
+                        happy: "HAPPY / 开心",
+                        calm: "CALM / 平静",
+                        sad: "SAD / 悲伤",
+                        angry: "ANGRY / 愤怒",
+                        surprised: "SURPRISED / 惊讶",
+                        afraid: "AFRAID / 恐惧",
+                        disgusted: "DISGUSTED / 厌恶",
+                        melancholic: "MELANCHOLIC / 忧郁",
+                        neutral: "NEUTRAL / 中性",
+                      }[k.toLowerCase()] || k.toUpperCase();
+                      return k.toLowerCase().includes(globalEmotionSearch.toLowerCase()) || label.toLowerCase().includes(globalEmotionSearch.toLowerCase());
+                    }).length === 0 && customEmotions.filter(ce => ce.name.toLowerCase().includes(globalEmotionSearch.toLowerCase())).length === 0 && (
+                      <div className="px-4 py-3 text-xs text-slate-400 text-center">无匹配选项</div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -867,7 +1000,7 @@ export default function StudioPage() {
             <button
               onClick={handleGenerateAllAudioProjectWide}
               disabled={generatingAudioIds.length > 0}
-              className="px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"
+              className="px-4 py-2.5 text-xs font-bold text-amber-700 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-50"
               title="一键顺序生成所有缺失音频，支持中断后继续"
             >
               {generatingAudioIds.length > 0 ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Volume2 className="w-3.5 h-3.5" />}
@@ -876,11 +1009,11 @@ export default function StudioPage() {
           </div>
 
           {/* 第三阶段：后期结果导出 */}
-          <div className="flex items-center gap-1 p-1 bg-violet-50 rounded-xl border border-violet-100 shadow-sm">
+          <div className="flex items-center gap-1.5 p-1 bg-violet-50/60 rounded-2xl border border-violet-200/70 shadow-sm">
             <button
               onClick={handleDownloadAllProjectAudio}
               disabled={isDownloadingProject}
-              className="px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"
+              className="px-4 py-2.5 text-xs font-bold text-violet-700 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-50"
               title="打包下载项目中所有的已生成音频"
             >
               {isDownloadingProject ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
@@ -892,7 +1025,7 @@ export default function StudioPage() {
             <div className="relative group">
               <button
                 disabled={isRenderingVideo}
-                className="px-3 py-1.5 text-xs font-medium text-violet-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all disabled:opacity-50"
+                className="px-4 py-2.5 text-xs font-bold text-violet-700 hover:bg-white hover:shadow-sm rounded-xl flex items-center gap-1.5 transition-all disabled:opacity-50"
                 title="导出 MP4 视频"
                 onClick={() => handleRenderProjectVideo(true)}
               >
@@ -904,21 +1037,21 @@ export default function StudioPage() {
                   : "导出全部视频"}
               </button>
               {!isRenderingVideo && (
-                <div className="absolute right-0 top-full pt-1 z-50 hidden group-hover:block">
-                  <div className="flex flex-col bg-white border border-violet-100 rounded-xl shadow-xl overflow-hidden min-w-[160px] py-1">
+                <div className="absolute right-0 top-full pt-1.5 z-[99] hidden group-hover:block">
+                  <div className="flex flex-col bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden min-w-[160px] py-1">
                     <button
                       onClick={() => handleRenderProjectVideo(true)}
-                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
                     >
-                      <Film className="w-3.5 h-3.5" />
+                      <Film className="w-3.5 h-3.5 text-slate-400" />
                       合并为一个 MP4
                     </button>
                     <div className="h-px bg-slate-100" />
                     <button
                       onClick={() => handleRenderProjectVideo(false)}
-                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
+                      className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-violet-50 hover:text-violet-700 transition-colors"
                     >
-                      <Clapperboard className="w-3.5 h-3.5" />
+                      <Clapperboard className="w-3.5 h-3.5 text-slate-400" />
                       分页下载 ZIP
                     </button>
                   </div>
@@ -929,20 +1062,36 @@ export default function StudioPage() {
         </div>
       </div>
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左侧：页面列表 (250px) */}
-        <div className="w-[280px] flex-shrink-0 z-20">
+      <div className="flex flex-1 overflow-hidden p-4 gap-4 bg-slate-100/50">
+        {/* 左侧：页面列表 (280px) */}
+        <div 
+          className={`flex-shrink-0 z-20 bg-white border border-slate-200/60 rounded-2xl shadow-sm transition-all duration-300 ease-in-out relative flex flex-col overflow-hidden ${
+            isSidebarCollapsed ? "w-0 opacity-0 pointer-events-none" : "w-[280px] opacity-100"
+          }`}
+        >
           <PageList 
             pages={pages}
             selectedIndex={selectedPageIndex}
             onSelect={setSelectedPageIndex}
             onAddPage={handleAddPage}
             onDeletePage={handleDeletePage}
+            onCollapse={() => setIsSidebarCollapsed(true)}
           />
         </div>
 
+        {/* Toggle Button for Sidebar when collapsed */}
+        {isSidebarCollapsed && (
+          <button 
+            onClick={() => setIsSidebarCollapsed(false)}
+            className="flex-shrink-0 z-30 p-2.5 bg-white border border-slate-200/80 shadow-md rounded-2xl text-slate-500 hover:text-cyan-600 hover:border-cyan-300 transition-all flex items-center justify-center h-12 w-12 self-center hover:scale-105"
+            title="展开页面列表"
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        )}
+
         {/* 中间：页面编辑器 (弹性宽) */}
-        <div className="flex-1 border-r border-slate-200 z-10 flex flex-col">
+        <div className="flex-1 bg-white border border-slate-200/60 rounded-2xl shadow-sm z-10 flex flex-col overflow-hidden">
           {currentPage ? (
             <PageEditor 
               page={currentPage}
@@ -955,19 +1104,24 @@ export default function StudioPage() {
               customEmotions={customEmotions}
             />
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4">
+            <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4 bg-white">
               <Wand2 className="w-12 h-12 opacity-20" />
               <p>请在左侧添加页面以开始编辑</p>
             </div>
           )}
         </div>
 
-        {/* 右侧：音频与设置 (400px) */}
-        <div className="w-[420px] flex-shrink-0 bg-slate-50 overflow-y-auto custom-scroll z-20 flex flex-col">
-          <div className="p-4 space-y-6">
+        {/* 右侧：音频与设置 (420px) */}
+        <div className="w-[420px] flex-shrink-0 bg-white border border-slate-200/60 rounded-2xl shadow-sm z-20 flex flex-col overflow-hidden">
+          <div className="p-4 border-b border-slate-100 shadow-sm bg-white">
+            <h3 className="font-semibold text-slate-800 text-sm">配音与情感设置</h3>
+          </div>
+          <div className="flex-1 overflow-y-auto custom-scroll p-4 space-y-6 bg-white">
             <VoiceSettingsPanel 
               value={voiceSettings} 
               onChange={setVoiceSettings} 
+              customEmotions={customEmotions}
+              onOpenLibrary={() => setIsEmotionLibraryOpen(true)}
             />
 
             {currentPage && (
