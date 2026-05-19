@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, cloneElement } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Mic2,
@@ -110,6 +110,16 @@ export default function GlobalHeader({
   const pathname = usePathname();
   const router = useRouter();
 
+  // 获取当前激活的工作台/工具
+  const getActiveTool = () => {
+    if (pathname === "/") return tools.find(t => t.id === "studio");
+    if (pathname.startsWith("/pdf-to-image")) return tools.find(t => t.id === "pdf-to-image");
+    if (pathname.startsWith("/video-matcher") || pathname.startsWith("/video-matcher-workflow")) return tools.find(t => t.id === "video-matcher");
+    if (pathname.startsWith("/stitch")) return tools.find(t => t.id === "stitch-studio");
+    return null;
+  };
+  const activeTool = getActiveTool();
+
   // 点击外部关闭菜单
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -180,11 +190,17 @@ export default function GlobalHeader({
         <div className="max-w-screen-xl mx-auto flex items-center gap-3 h-14 px-6">
           {/* Logo */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-600 to-blue-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-              <Wand2 className="w-4.5 h-4.5 text-white" />
+            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${activeTool ? activeTool.color : "from-cyan-600 to-blue-600"} flex items-center justify-center shadow-lg shadow-cyan-500/20 transition-all duration-300`}>
+              {activeTool ? (
+                cloneElement(activeTool.icon as React.ReactElement, {
+                  className: "w-4.5 h-4.5 text-white",
+                })
+              ) : (
+                <Wand2 className="w-4.5 h-4.5 text-white" />
+              )}
             </div>
-            <span className="font-bold text-lg tracking-tight bg-gradient-to-r from-cyan-600 to-blue-600 bg-clip-text text-transparent">
-              Javis Studio
+            <span className={`font-bold text-lg tracking-tight bg-gradient-to-r ${activeTool ? activeTool.color : "from-cyan-600 to-blue-600"} bg-clip-text text-transparent transition-all duration-300`}>
+              {activeTool ? activeTool.name : "Javis Studio"}
             </span>
           </div>
 

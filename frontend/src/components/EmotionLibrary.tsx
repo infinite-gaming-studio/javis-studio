@@ -29,6 +29,8 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
   const [importText, setImportText] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isRegexMode, setIsRegexMode] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -37,6 +39,8 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
       setEditingId(null);
       setShowImport(false);
       setSearchQuery("");
+      setSelectedIds([]);
+      setIsRegexMode(false);
     }
   }, [isOpen]);
 
@@ -68,7 +72,7 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
       return;
     }
     
-    let newEmotions = [...emotions];
+    const newEmotions = [...emotions];
     const exists = newEmotions.findIndex(e => e.id === editForm.id);
     if (exists >= 0) {
       newEmotions[exists] = editForm;
@@ -88,7 +92,25 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
       onConfirm: () => {
         saveToStorage(emotions.filter(e => e.id !== id));
         if (editingId === id) setEditingId(null);
+        setSelectedIds(prev => prev.filter(item => item !== id));
         showToast("已删除", "success");
+      }
+    });
+  };
+
+  const handleBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    showConfirm({
+      title: "批量删除预设",
+      message: `确定要删除选中的 ${selectedIds.length} 个情感预设吗？此操作无法撤销。`,
+      onConfirm: () => {
+        const remaining = emotions.filter(e => !selectedIds.includes(e.id));
+        saveToStorage(remaining);
+        if (editingId && selectedIds.includes(editingId)) {
+          setEditingId(null);
+        }
+        setSelectedIds([]);
+        showToast(`已批量删除 ${selectedIds.length} 个预设`, "success");
       }
     });
   };
@@ -127,6 +149,40 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
     a.click();
     showToast("已导出 JSON 文件", "success");
   };
+
+  // 验证正则表达式合法性
+  const isRegexValid = (() => {
+    if (!isRegexMode || !searchQuery) return true;
+    try {
+      new RegExp(searchQuery);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  })();
+
+  // 过滤后的情感预设列表
+  const filteredEmotions = (() => {
+    if (!searchQuery) return emotions;
+    if (isRegexMode) {
+      if (!isRegexValid) return [];
+      try {
+        const regex = new RegExp(searchQuery, "i");
+        return emotions.filter(
+          (emo) => regex.test(emo.name) || regex.test(emo.text || "")
+        );
+      } catch (e) {
+        return [];
+      }
+    } else {
+      const query = searchQuery.toLowerCase();
+      return emotions.filter(
+        (emo) =>
+          emo.name.toLowerCase().includes(query) ||
+          (emo.text || "").toLowerCase().includes(query)
+      );
+    }
+  })();
 
   if (!isOpen) return null;
 
@@ -172,23 +228,75 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
               </button>
             </div>
             {/* Search Input */}
-            <div className="px-3 py-2 border-b border-slate-100/80 bg-slate-50/50">
-              <input
-                type="text"
-                placeholder="搜索预设..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full text-xs px-2.5 py-1.5 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 bg-white placeholder-slate-400 font-medium"
-              />
+            <div className="px-3 py-2 border-b border-slate-100/80 bg-slate-50/50 flex flex-col gap-1.5">
+              <div className="relative flex items-center">
+                <input
+                  type="text"
+                  placeholder={isRegexMode ? "用正则表达式搜索..." : "搜索预设..."}
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={`w-full text-xs pl-2.5 pr-10 py-1.5 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 bg-white placeholder-slate-400 font-medium transition-all ${
+                    !isRegexValid ? 'border-red-400 focus:border-red-500 focus:ring-red-100' : 'border-slate-200 focus:border-indigo-500'
+                  }`}
+                />
+                <button
+                  onClick={() => setIsRegexMode(!isRegexMode)}
+                  className={`absolute right-1.5 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold border transition-all ${
+                    isRegexMode
+                      ? 'bg-indigo-50 border-indigo-200 text-indigo-600 shadow-sm'
+                      : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-slate-100'
+                  }`}
+                  title="正则表达式模式 (.*)"
+                >
+                  .*
+                </button>
+              </div>
+              {!isRegexValid && (
+                <p className="text-[10px] text-red-500 font-semibold px-1">
+                  正则表达式语法错误
+                </p>
+              )}
             </div>
+
+            {/* Batch Action Bar */}
+            {filteredEmotions.length > 0 && (
+              <div className="px-3 py-2 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs text-slate-500 font-medium">
+                <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={filteredEmotions.length > 0 && filteredEmotions.every((emo) => selectedIds.includes(emo.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        const newSelected = Array.from(new Set([...selectedIds, ...filteredEmotions.map(emo => emo.id)]));
+                        setSelectedIds(newSelected);
+                      } else {
+                        const filteredIds = filteredEmotions.map(emo => emo.id);
+                        setSelectedIds(selectedIds.filter(id => !filteredIds.includes(id)));
+                      }
+                    }}
+                    className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 accent-indigo-500"
+                  />
+                  <span>全选 {filteredEmotions.length} 项</span>
+                </label>
+
+                {selectedIds.length > 0 && (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
+                    <span className="text-indigo-600 font-bold">已选 {selectedIds.length} 项</span>
+                    <button
+                      onClick={handleBatchDelete}
+                      className="flex items-center gap-1 px-2 py-1 bg-red-50 hover:bg-red-100 text-red-600 hover:text-red-700 rounded-md transition-all font-bold"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      删除
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex-1 overflow-y-auto p-3 space-y-2 custom-scroll">
               {(() => {
-                const filtered = emotions.filter(emo => 
-                  emo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  (emo.text || "").toLowerCase().includes(searchQuery.toLowerCase())
-                );
-                
-                if (filtered.length === 0) {
+                if (filteredEmotions.length === 0) {
                   return (
                     <div className="text-center py-10 text-slate-400 text-sm">
                       {searchQuery ? "无匹配的预设" : "暂无自定义情感，请新建或导入"}
@@ -196,19 +304,49 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                   );
                 }
 
-                return filtered.map(emo => (
-                  <div 
-                    key={emo.id}
-                    onClick={() => handleEdit(emo)}
-                    className={`group p-3 rounded-xl border cursor-pointer transition-all ${
-                      editingId === emo.id 
-                        ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
-                        : 'bg-white border-slate-200 hover:border-indigo-200'
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h4 className="font-bold text-slate-800 text-sm">{emo.name}</h4>
+                return filteredEmotions.map(emo => {
+                  const isChecked = selectedIds.includes(emo.id);
+                  return (
+                    <div 
+                      key={emo.id}
+                      onClick={() => handleEdit(emo)}
+                      className={`group p-3 rounded-xl border cursor-pointer transition-all flex gap-2.5 items-start ${
+                        editingId === emo.id 
+                          ? 'bg-indigo-50 border-indigo-200 shadow-sm' 
+                          : 'bg-white border-slate-200 hover:border-indigo-200 hover:shadow-sm'
+                      }`}
+                    >
+                      {/* Checkbox */}
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (isChecked) {
+                            setSelectedIds(selectedIds.filter(id => id !== emo.id));
+                          } else {
+                            setSelectedIds([...selectedIds, emo.id]);
+                          }
+                        }}
+                        className="pt-0.5 flex items-center justify-center cursor-pointer"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          readOnly
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 accent-indigo-500 cursor-pointer"
+                        />
+                      </div>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-start gap-1">
+                          <h4 className="font-bold text-slate-800 text-sm truncate">{emo.name}</h4>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDelete(emo.id); }}
+                            className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                         <div className="flex gap-2 mt-1.5">
                           <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded uppercase font-mono tracking-tighter">
                             {emo.mode}
@@ -218,15 +356,9 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                           </span>
                         </div>
                       </div>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDelete(emo.id); }}
-                        className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-all"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
                     </div>
-                  </div>
-                ));
+                  );
+                });
               })()}
             </div>
           </div>
@@ -242,7 +374,7 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                 <p className="text-xs text-slate-500 mb-4 leading-relaxed">
                   格式示例: <br/>
                   <code className="block mt-2 p-3 bg-slate-50 rounded-lg text-slate-700 font-mono text-[11px] whitespace-pre-wrap border border-slate-100">
-                    [\n  {"{"}\n    "name": "激昂演讲",\n    "mode": "text",\n    "alpha": 1.5,\n    "text": "充满激情，声音洪亮"\n  {"}"}\n]
+                    {`[\n  {\n    "name": "激昂演讲",\n    "mode": "text",\n    "alpha": 1.5,\n    "text": "充满激情，声音洪亮"\n  }\n]`}
                   </code>
                 </p>
                 <textarea

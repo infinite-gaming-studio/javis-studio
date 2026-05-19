@@ -108,13 +108,23 @@ export default function StudioPage() {
   
   const [isImportScriptModalOpen, setIsImportScriptModalOpen] = useState(false);
   const [importScriptText, setImportScriptText] = useState("");
-  const [customEmotions, setCustomEmotions] = useState<any[]>([]);
+  const [customEmotions, setCustomEmotions] = useState<CustomEmotion[]>([]);
+  const [projectCustomEmotions, setProjectCustomEmotions] = useState<CustomEmotion[]>([]);
   const [globalEmotionSearch, setGlobalEmotionSearch] = useState("");
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
-  const loadCustomEmotions = useCallback(() => {
-    setCustomEmotions(getSettings().customEmotions || []);
-  }, []);
+  const loadCustomEmotions = useCallback((projEmotions?: CustomEmotion[]) => {
+    const globalEmotions = getSettings().customEmotions || [];
+    const targetProjEmotions = projEmotions !== undefined ? projEmotions : projectCustomEmotions;
+    
+    const merged = [...globalEmotions];
+    targetProjEmotions.forEach(pe => {
+      if (!merged.some(ge => ge.id === pe.id)) {
+        merged.push(pe);
+      }
+    });
+    setCustomEmotions(merged);
+  }, [projectCustomEmotions]);
 
   useEffect(() => {
     loadCustomEmotions();
@@ -130,19 +140,23 @@ export default function StudioPage() {
           setTopic(tempData.topic);
           setPages(tempData.pages);
           setVoiceSettings(tempData.voiceSettings);
+          const cachedEmos = tempData.customEmotions || [];
+          setProjectCustomEmotions(cachedEmos);
+          loadCustomEmotions(cachedEmos);
         }
       });
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       if (projectName || topic || pages.length > 0) {
-        saveTempData({ projectName, topic, pages, voiceSettings });
+        saveTempData({ projectName, topic, pages, voiceSettings, customEmotions: projectCustomEmotions });
       }
     }, 1000);
     return () => clearTimeout(timeoutId);
-  }, [projectName, topic, pages, voiceSettings]);
+  }, [projectName, topic, pages, voiceSettings, projectCustomEmotions]);
 
   const saveCurrentProject = useCallback(async () => {
     if (!projectName.trim() && pages.length === 0) return;
@@ -158,18 +172,20 @@ export default function StudioPage() {
       topic,
       voiceSettings,
       pages,
+      customEmotions,
     };
 
     try {
       await dbSaveProject(projectData);
       setCurrentProjectId(id);
+      setProjectCustomEmotions(customEmotions);
       dbListProjects().then(setHistory);
       showToast("项目已保存", "success");
     } catch (err) {
       console.error("保存失败:", err);
       showToast("保存失败，请重试", "error");
     }
-  }, [projectName, pages, currentProjectId, topic, voiceSettings, showToast]);
+  }, [projectName, pages, currentProjectId, topic, voiceSettings, customEmotions, showToast]);
 
   const loadProject = useCallback(async (meta: ProjectMeta) => {
     try {
@@ -180,6 +196,9 @@ export default function StudioPage() {
         setTopic(data.topic || "");
         setPages(data.pages || []);
         setVoiceSettings(data.voiceSettings || DEFAULT_VOICE);
+        const cachedEmos = data.customEmotions || [];
+        setProjectCustomEmotions(cachedEmos);
+        loadCustomEmotions(cachedEmos);
         setSelectedPageIndex(0);
         setShowHistory(false);
         showToast("项目加载成功", "success");
@@ -188,7 +207,7 @@ export default function StudioPage() {
       console.error("加载失败:", err);
       showToast("加载项目失败", "error");
     }
-  }, [showToast]);
+  }, [loadCustomEmotions, showToast]);
 
   const deleteProject = useCallback(async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -216,6 +235,8 @@ export default function StudioPage() {
     setTopic("");
     setPages([]);
     setVoiceSettings(DEFAULT_VOICE);
+    setProjectCustomEmotions([]);
+    loadCustomEmotions([]);
     setSelectedPageIndex(0);
     setShowHistory(false);
   };

@@ -74,7 +74,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
             {children}
             
             {/* Toast Container */}
-            <div className="fixed top-4 right-4 z-[200] flex flex-col gap-2">
+            <div className="fixed top-4 right-4 z-[100000] flex flex-col gap-2">
                 {toasts.map(toast => (
                     <div
                         key={toast.id}
@@ -123,7 +123,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
             {/* Confirm Modal */}
             {confirmState && (
-                <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
                     <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 animate-in zoom-in-95 duration-200">
                         <div className="p-6">
                             {confirmState.title && (
