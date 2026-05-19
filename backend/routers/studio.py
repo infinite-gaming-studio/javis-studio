@@ -60,9 +60,20 @@ async def generate_full(req: StudioRequest):
     async def synth_segment(seg: ScriptSegment) -> AudioSegmentResult:
         fname = f"seg_{seg.index:03d}.wav"
         try:
+            # Apply segment-specific custom emotion overrides
+            seg_vs = req.voice_settings.model_copy()
+            if seg.emo_mode is not None:
+                seg_vs.emotion_mode = seg.emo_mode
+            if seg.emo_alpha is not None:
+                seg_vs.emo_alpha = seg.emo_alpha
+            if seg.emo_vector is not None:
+                seg_vs.emo_vector = seg.emo_vector
+            if seg.emo_text is not None:
+                seg_vs.emo_text = seg.emo_text
+
             out = await tts_service.synthesize(
                 text=seg.text,
-                voice_settings=req.voice_settings,
+                voice_settings=seg_vs,
                 output_dir=session_dir,
                 filename=fname,
                 emotion_hint=seg.emotion_hint,

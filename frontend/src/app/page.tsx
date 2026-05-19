@@ -6,7 +6,8 @@ import {
   AudioClip, 
   VoiceSettings, 
   ttsSingleVersion,
-  audioUrl
+  audioUrl,
+  getSettings
 } from "@/lib/api";
 import { 
   dbSaveProject, 
@@ -28,6 +29,7 @@ import PageAudioPlayer from "@/components/PageAudioPlayer";
 import VoiceSettingsPanel from "@/components/VoiceSettings";
 import GlobalHeader from "@/components/GlobalHeader";
 import SettingsModal from "@/components/SettingsModal";
+import EmotionLibrary from "@/components/EmotionLibrary";
 
 const DEFAULT_VOICE: VoiceSettings = {
   spk_audio_prompt: "",
@@ -92,6 +94,7 @@ export default function StudioPage() {
   const [history, setHistory] = useState<ProjectMeta[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [currentProjectId, setCurrentProjectId] = useState<string | null>(null);
+  const [isEmotionLibraryOpen, setIsEmotionLibraryOpen] = useState(false);
 
   // States
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
@@ -105,6 +108,15 @@ export default function StudioPage() {
   
   const [isImportScriptModalOpen, setIsImportScriptModalOpen] = useState(false);
   const [importScriptText, setImportScriptText] = useState("");
+  const [customEmotions, setCustomEmotions] = useState<any[]>([]);
+
+  const loadCustomEmotions = useCallback(() => {
+    setCustomEmotions(getSettings().customEmotions || []);
+  }, []);
+
+  useEffect(() => {
+    loadCustomEmotions();
+  }, [isEmotionLibraryOpen, loadCustomEmotions]);
 
   useEffect(() => {
     if (isIndexedDBAvailable()) {
@@ -352,7 +364,16 @@ export default function StudioPage() {
 
     setGeneratingAudioIds(prev => [...prev, clipId]);
     try {
-      const version = await ttsSingleVersion(clip.text, voiceSettings);
+      let mergedSettings = { ...voiceSettings };
+      const customEmo = customEmotions.find(e => e.id === clip.emotion_hint);
+      if (customEmo) {
+        mergedSettings.emotion_mode = customEmo.mode;
+        mergedSettings.emo_alpha = customEmo.alpha;
+        if (customEmo.mode === "vector") mergedSettings.emo_vector = customEmo.vector;
+        if (customEmo.mode === "text") mergedSettings.emo_text = customEmo.text;
+      }
+      
+      const version = await ttsSingleVersion(clip.text, mergedSettings);
       
       setPages(prevPages => prevPages.map(p => {
         if (p.id !== pageId) return p;
@@ -427,15 +448,16 @@ export default function StudioPage() {
   };
 
   const handleUnifyAllEmotionsProjectWide = (emotion: string) => {
+    const emotionName = customEmotions.find(e => e.id === emotion)?.name || emotion.toUpperCase();
     showConfirm({
       title: "全局统一更改情绪",
-      message: `确定要将整个项目所有页面的旁白情绪都更改为 "${emotion.toUpperCase()}" 吗？`,
+      message: `确定要将整个项目所有页面的旁白情绪都更改为 "${emotionName}" 吗？`,
       onConfirm: () => {
         setPages(prev => prev.map(p => ({
           ...p,
           clips: p.clips.map(c => ({ ...c, emotion_hint: emotion }))
         })));
-        showToast(`已全局将所有情绪统一更改为 ${emotion.toUpperCase()}`, "success");
+        showToast(`已全局将所有情绪统一更改为 ${emotionName}`, "success");
       }
     });
   };
@@ -779,6 +801,11 @@ export default function StudioPage() {
               批量填入文案
             </button>
             <div className="w-px h-4 bg-slate-200" />
+            <button onClick={() => setIsEmotionLibraryOpen(true)} className="px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
+              <Smile className="w-3.5 h-3.5" />
+              情感预设库
+            </button>
+            <div className="w-px h-4 bg-slate-200" />
             <button
               onClick={() => setShowHistory(true)}
               className="px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all"
@@ -808,10 +835,12 @@ export default function StudioPage() {
             <div className="relative group">
               <button className="px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-white hover:shadow-sm rounded-lg flex items-center gap-1.5 transition-all">
                 <Smile className="w-3.5 h-3.5" /> 
-                {currentGlobalEmotion ? `全局: ${currentGlobalEmotion.toUpperCase()}` : "全局情绪"}
+                {currentGlobalEmotion 
+                  ? `全局: ${customEmotions.find(e => e.id === currentGlobalEmotion)?.name || currentGlobalEmotion.toUpperCase()}` 
+                  : "全局情绪"}
               </button>
               <div className="absolute left-1/2 -translate-x-1/2 top-full pt-1 z-50 hidden group-hover:block">
-                <div className="flex flex-col bg-white border border-amber-100 rounded-xl shadow-xl overflow-hidden min-w-[120px] py-1">
+                <div className="flex flex-col bg-white border border-amber-100 rounded-xl shadow-xl overflow-hidden min-w-[120px] py-1 max-h-[300px] overflow-y-auto custom-scroll">
                   {EMOTION_KEYS.map(k => (
                     <button 
                       key={k} 
@@ -819,6 +848,16 @@ export default function StudioPage() {
                       className="px-4 py-2 text-xs font-medium text-left text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
                     >
                       {k.toUpperCase()}
+                    </button>
+                  ))}
+                  {customEmotions.length > 0 && <div className="h-px bg-slate-100 my-1" />}
+                  {customEmotions.map(ce => (
+                    <button 
+                      key={ce.id} 
+                      onClick={() => handleUnifyAllEmotionsProjectWide(ce.id)} 
+                      className="px-4 py-2 text-xs font-medium text-left text-indigo-700 hover:bg-indigo-50 transition-colors"
+                    >
+                      {ce.name}
                     </button>
                   ))}
                 </div>
@@ -913,6 +952,7 @@ export default function StudioPage() {
               onGenerateAudio={handleGenerateAudioForClip}
               generatingAudioIds={generatingAudioIds}
               currentPlayingClipId={currentPlayingClipId}
+              customEmotions={customEmotions}
             />
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400 gap-4">
@@ -1056,6 +1096,11 @@ export default function StudioPage() {
           </div>
         </div>
       )}
+      <EmotionLibrary 
+        isOpen={isEmotionLibraryOpen} 
+        onClose={() => setIsEmotionLibraryOpen(false)} 
+        onEmotionsChanged={setCustomEmotions}
+      />
     </div>
   );
 }

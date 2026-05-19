@@ -28,6 +28,10 @@ export interface ScriptSegment {
   text: string;
   emotion_hint?: string;
   speaker?: string;
+  emo_mode?: EmotionMode;
+  emo_alpha?: number;
+  emo_vector?: number[];
+  emo_text?: string;
 }
 
 /** A single generated audio version for one script segment. */
@@ -60,6 +64,15 @@ export interface StudioGenerateResponse {
 }
 
 // ─── New Architecture Types ───────────────────────────────────────────────────
+
+export interface CustomEmotion {
+  id: string;
+  name: string;
+  mode: EmotionMode;
+  alpha: number;
+  vector?: number[];
+  text?: string;
+}
 
 export interface AudioClip {
   id: string;             // unique ID
@@ -98,18 +111,21 @@ export interface GlobalSettings {
   youtubeApiKey: string;
   youtubeCookiesPath: string;
   unsplashApiKey: string;
+  customEmotions: CustomEmotion[];
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 export function getSettings(): GlobalSettings {
-  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", youtubeCookiesPath: "", unsplashApiKey: "" };
+  if (typeof window === "undefined") return { llmApiUrl: "", llmToken: "", llmModel: "", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", youtubeCookiesPath: "", unsplashApiKey: "", customEmotions: [] };
   const saved = localStorage.getItem("javis_studio_settings");
-  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", youtubeCookiesPath: "", unsplashApiKey: "" };
+  if (!saved) return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", youtubeCookiesPath: "", unsplashApiKey: "", customEmotions: [] };
   try {
-    return JSON.parse(saved);
+    const parsed = JSON.parse(saved);
+    if (!parsed.customEmotions) parsed.customEmotions = [];
+    return parsed;
   } catch {
-    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", youtubeCookiesPath: "", unsplashApiKey: "" };
+    return { llmApiUrl: "", llmToken: "", llmModel: "gpt-3.5-turbo", ttsApiUrl: "", ttsToken: "", pexelsApiKey: "", pixabayApiKey: "", youtubeApiKey: "", youtubeCookiesPath: "", unsplashApiKey: "", customEmotions: [] };
   }
 }
 

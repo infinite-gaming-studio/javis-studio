@@ -111,7 +111,6 @@ async def synthesize_rest(
         
         # Determine emotion mode
         emo_mode = _emotion_mode_to_int(voice_settings.emotion_mode)
-        data["emo_mode"] = str(emo_mode)
         
         # Emotion alpha
         if voice_settings.emo_alpha != 1.0:
@@ -128,10 +127,14 @@ async def synthesize_rest(
         emo_vec = _build_emo_vector(voice_settings, emotion_hint)
         if emo_vec is not None:
             data["emo_vector"] = json.dumps(emo_vec)
+            if emo_mode == 0:  # If mode was None, force Vector mode (2) to apply standard emotion vector
+                emo_mode = 2
         
         # Emotion text (mode 3)
         if voice_settings.emotion_mode == EmotionMode.text and voice_settings.emo_text:
             data["emo_text"] = voice_settings.emo_text
+            
+        data["emo_mode"] = str(emo_mode)
         
         # Optional parameters for generation control
         if voice_settings.use_random:

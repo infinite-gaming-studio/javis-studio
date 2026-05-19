@@ -41,8 +41,14 @@ class ScriptSegment(BaseModel):
     """A single narration segment from the LLM."""
     index: int
     text: str
-    emotion_hint: Optional[str] = None    # e.g. "excited", "calm", "sad"
+    emotion_hint: Optional[str] = None    # e.g. "excited", "calm", "sad", or custom ID
     speaker: Optional[str] = None         # future: multi-speaker
+
+    # Optional fields for segment-level custom emotion overrides
+    emo_mode: Optional[EmotionMode] = None
+    emo_alpha: Optional[float] = None
+    emo_vector: Optional[list[float]] = None
+    emo_text: Optional[str] = None
 
 
 class StudioRequest(BaseModel):
