@@ -475,20 +475,21 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                 <span></span>
                 <span className="text-indigo-500">{editForm.speed.toFixed(2)}x{editForm.speed === 1.0 ? " 正常" : editForm.speed > 1.0 ? " 加速" : " 减速"}</span>
               </div>
-              <input
-                type="range"
-                min={0.5}
-                max={2.0}
-                step={0.05}
-                value={editForm.speed}
-                onChange={(e) => setEditForm({...editForm, speed: parseFloat(e.target.value)})}
-                className="w-full accent-indigo-500"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>0.5x 慢速</span>
-                <span>1.0x 正常</span>
-                <span>2.0x 快速</span>
-              </div>
+          <input
+            type="range"
+            min={0.5}
+            max={2.0}
+            step={0.05}
+            value={editForm.speed}
+            onChange={(e) => setEditForm({...editForm, speed: parseFloat(e.target.value)})}
+            className="w-full accent-indigo-500"
+            style={{ margin: '0', padding: '0' }}
+          />
+          <div className="flex justify-between text-[10px] text-slate-400 mt-1" style={{ paddingLeft: '6px', paddingRight: '6px' }}>
+            <span>0.5x 慢速</span>
+            <span>1.0x 正常</span>
+            <span>2.0x 快速</span>
+          </div>
             </>
           ) : (
             <p className="text-[11px] text-slate-400">使用全局语速设置</p>
