@@ -407,6 +407,9 @@ export default function StudioPage() {
         } else if (customEmo.mode === "text") {
           mergedSettings.emo_text = customEmo.text;
         }
+        if (customEmo.speed !== undefined) {
+          mergedSettings.speed = customEmo.speed;
+        }
       } else if (emoHint !== "default") {
         // Priority 2: Standard Emotion Override (happy, calm, etc.)
         // Force vector mode with standard vector
