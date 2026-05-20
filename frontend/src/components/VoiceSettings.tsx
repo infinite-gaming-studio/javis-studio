@@ -87,18 +87,42 @@ export default function VoiceSettings({ value, onChange, customEmotions, onOpenL
                 )}
             </div>
 
-            {/* Random toggle */}
-            <div className="py-1">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                    <div
-                        onClick={() => update({ use_random: !value.use_random })}
-                        className={`w-9 h-5 rounded-full relative transition-colors duration-200 ${value.use_random ? "bg-cyan-500" : "bg-slate-200"}`}
-                    >
-                        <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${value.use_random ? "translate-x-4.5" : "translate-x-0.5"}`} />
-                    </div>
-                    <span className="text-xs font-semibold text-slate-600">启用随机采样 (降低声音复现度)</span>
-                </label>
-            </div>
+      {/* Random toggle */}
+      <div className="py-1">
+        <label className="flex items-center gap-2.5 cursor-pointer">
+          <div
+            onClick={() => update({ use_random: !value.use_random })}
+            className={`w-9 h-5 rounded-full relative transition-colors duration-200 ${value.use_random ? "bg-cyan-500" : "bg-slate-200"}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform duration-200 ${value.use_random ? "translate-x-4.5" : "translate-x-0.5"}`} />
+          </div>
+          <span className="text-xs font-semibold text-slate-600">启用随机采样 (降低声音复现度)</span>
+        </label>
+      </div>
+
+      {/* Speed control */}
+      <div className="py-1">
+        <div className="flex justify-between items-center mb-1.5">
+          <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">语速控制</label>
+          <span className="text-xs font-bold text-cyan-600">
+            {(value.speed ?? 1.0).toFixed(2)}x{(value.speed ?? 1.0) === 1.0 ? " 正常" : (value.speed ?? 1.0) > 1.0 ? " 加速" : " 减速"}
+          </span>
+        </div>
+        <input
+          type="range"
+          min={0.5}
+          max={2.0}
+          step={0.05}
+          value={value.speed ?? 1.0}
+          onChange={(e) => update({ speed: parseFloat(e.target.value) })}
+          className="w-full accent-cyan-500"
+        />
+        <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+          <span>0.5x 慢速</span>
+          <span>1.0x 正常</span>
+          <span>2.0x 快速</span>
+        </div>
+      </div>
 
         </div>
     );
