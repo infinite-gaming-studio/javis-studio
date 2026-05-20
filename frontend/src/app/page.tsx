@@ -36,6 +36,7 @@ const DEFAULT_VOICE: VoiceSettings = {
   emotion_mode: "none",
   emo_alpha: 1.0,
   use_random: false,
+  speed: 1.0,
 };
 
 const TEMP_STORAGE_KEY = "javis_studio_temp_v2";

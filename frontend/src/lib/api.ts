@@ -12,6 +12,7 @@ export interface VoiceSettings {
   emo_vector?: number[]; // 8 floats
   emo_text?: string;
   use_random: boolean;
+  speed?: number; // 0.5–2.0, default 1.0
   do_sample?: boolean;
   top_p?: number;
   top_k?: number;
@@ -72,9 +73,8 @@ export interface CustomEmotion {
   alpha: number;
   vector?: number[];
   text?: string;
-}
-
-export interface AudioClip {
+  speed?: number; // 0.5–2.0, undefined = follow global
+}export interface AudioClip {
   id: string;             // unique ID
   text: string;           // script text
   emotion_hint?: string;  // user selected emotion
