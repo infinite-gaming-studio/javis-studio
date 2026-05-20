@@ -102,13 +102,13 @@ export default function VoiceSettings({ value, onChange, customEmotions, onOpenL
 
       {/* Speed control */}
       <div className="py-1">
-        <div className="flex justify-between items-center mb-1.5">
+        <div className="flex justify-between items-center mb-1.5 px-3">
           <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider">语速控制</label>
           <span className="text-xs font-bold text-cyan-600">
             {(value.speed ?? 1.0).toFixed(2)}x{(value.speed ?? 1.0) === 1.0 ? " 正常" : (value.speed ?? 1.0) > 1.0 ? " 加速" : " 减速"}
           </span>
         </div>
-        <div className="relative">
+        <div className="relative px-3">
           <input
             type="range"
             min={0.5}
@@ -117,9 +117,8 @@ export default function VoiceSettings({ value, onChange, customEmotions, onOpenL
             value={value.speed ?? 1.0}
             onChange={(e) => update({ speed: parseFloat(e.target.value) })}
             className="w-full accent-cyan-500"
-            style={{ margin: '0', padding: '0' }}
           />
-          <div className="flex justify-between text-[10px] text-slate-400 mt-1" style={{ paddingLeft: '6px', paddingRight: '6px' }}>
+          <div className="flex justify-between text-[10px] text-slate-400 mt-1">
             <span>0.5x 慢速</span>
             <span>1.0x 正常</span>
             <span>2.0x 快速</span>
