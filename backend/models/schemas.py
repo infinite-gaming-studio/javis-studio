@@ -24,6 +24,7 @@ class VoiceSettings(BaseModel):
     emo_vector: Optional[list[float]] = Field(None, min_length=8, max_length=8, description="8-element emotion vector")
     emo_text: Optional[str] = Field(None, description="Text emotion description (used when emotion_mode=text)")
     use_random: bool = Field(False, description="Enable stochastic inference (reduces voice fidelity)")
+    speed: float = Field(1.0, ge=0.5, le=2.0, description="Speech speed ratio (0.5=slow, 1.0=normal, 2.0=fast)")
 
     # New sampling and control parameters
     do_sample: bool = Field(True, description="Whether to perform sampling")
