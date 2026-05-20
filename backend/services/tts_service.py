@@ -157,7 +157,9 @@ async def synthesize_rest(
             data["max_mel_tokens"] = str(voice_settings.max_mel_tokens)
         if voice_settings.max_text_tokens_per_segment != 120:
             data["max_text_tokens_per_segment"] = str(voice_settings.max_text_tokens_per_segment)
-        
+        if voice_settings.speed != 1.0:
+            data["speed"] = str(voice_settings.speed)
+
         # Build headers with optional auth
         headers = {}
         if settings.indextts_api_token:
