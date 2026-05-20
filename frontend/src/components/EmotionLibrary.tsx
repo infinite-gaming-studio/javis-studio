@@ -16,6 +16,7 @@ const DEFAULT_EMOTION: CustomEmotion = {
   alpha: 1.0,
   text: "",
   vector: [0, 0, 0, 0, 0, 0, 0, 0],
+  speed: undefined,
 };
 
 const EMOTION_KEYS = ["happy", "angry", "sad", "afraid", "disgusted", "melancholic", "surprised", "calm"];
@@ -128,8 +129,9 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
         mode: item.mode || "text",
         alpha: typeof item.alpha === 'number' ? item.alpha : 1.0,
         text: item.text || "",
-        vector: Array.isArray(item.vector) && item.vector.length === 8 ? item.vector : [0,0,0,0,0,0,0,0],
-      }));
+          vector: Array.isArray(item.vector) && item.vector.length === 8 ? item.vector : [0,0,0,0,0,0,0,0],
+          speed: typeof item.speed === 'number' ? item.speed : undefined,
+        }));
 
       const newEmotions = [...emotions, ...validated];
       saveToStorage(newEmotions);
@@ -354,6 +356,11 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                           <span className="text-[10px] px-1.5 py-0.5 bg-indigo-100/50 text-indigo-500 rounded uppercase font-mono tracking-tighter">
                             a={emo.alpha.toFixed(2)}
                           </span>
+                          {emo.speed !== undefined && (
+                            <span className="text-[10px] px-1.5 py-0.5 bg-cyan-100/50 text-cyan-500 rounded uppercase font-mono tracking-tighter">
+                              s={emo.speed.toFixed(2)}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -443,10 +450,52 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
                       onChange={e => setEditForm({...editForm, alpha: parseFloat(e.target.value)})}
                       className="w-full accent-indigo-500"
                     />
-                    <p className="text-[11px] text-slate-400 mt-1">推荐 0.5 - 1.5 之间，数值越大情感波动越剧烈</p>
-                  </div>
+          <p className="text-[11px] text-slate-400 mt-1">推荐 0.5 - 1.5 之间，数值越大情感波动越剧烈</p>
+        </div>
 
-                  {editForm.mode === "text" && (
+        <div>
+          <div className="flex items-center justify-between mb-1.5">
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">语速控制</label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={editForm.speed === undefined}
+                onChange={(e) => setEditForm({
+                  ...editForm,
+                  speed: e.target.checked ? undefined : 1.0
+                })}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-3.5 h-3.5 accent-indigo-500"
+              />
+              <span className="text-[11px] font-semibold text-slate-500">跟随全局</span>
+            </label>
+          </div>
+          {editForm.speed !== undefined ? (
+            <>
+              <div className="flex justify-between text-xs font-bold text-slate-500 mb-1">
+                <span></span>
+                <span className="text-indigo-500">{editForm.speed.toFixed(2)}x{editForm.speed === 1.0 ? " 正常" : editForm.speed > 1.0 ? " 加速" : " 减速"}</span>
+              </div>
+              <input
+                type="range"
+                min={0.5}
+                max={2.0}
+                step={0.05}
+                value={editForm.speed}
+                onChange={(e) => setEditForm({...editForm, speed: parseFloat(e.target.value)})}
+                className="w-full accent-indigo-500"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                <span>0.5x 慢速</span>
+                <span>1.0x 正常</span>
+                <span>2.0x 快速</span>
+              </div>
+            </>
+          ) : (
+            <p className="text-[11px] text-slate-400">使用全局语速设置</p>
+          )}
+        </div>
+
+        {editForm.mode === "text" && (
                     <div className="animate-in slide-in-from-top-2 fade-in">
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">情感文本描述</label>
                       <textarea 
