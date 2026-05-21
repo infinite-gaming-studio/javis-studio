@@ -6,6 +6,7 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
@@ -27,6 +28,10 @@ from services import render_video_service
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Cache directory for audio files fetched from the frontend via HTTP
+_audio_cache_dir = os.path.join(tempfile.gettempdir(), "javis_audio_cache")
+os.makedirs(_audio_cache_dir, exist_ok=True)
 
 router = APIRouter(prefix="/api/studio", tags=["studio"])
 
@@ -252,12 +257,38 @@ def _resolve_audio_path(audio_url_str: str) -> str:
     """
     Convert a frontend audio_url like "/audio/tts_abc.wav"
     to an absolute filesystem path.
+
+    If the file is hosted by the frontend (under /audio/) and doesn't exist
+    on the local filesystem (e.g. running in Docker without a shared volume),
+    fetch it via HTTP from the frontend and cache it locally.
     """
     if audio_url_str.startswith("/audio/"):
-        # This is a frontend-saved audio file
         frontend_dir = Path(__file__).parent.parent.parent / "frontend" / "public"
         rel_path = audio_url_str.lstrip("/")
-        return str(frontend_dir / rel_path)
+        local_path = str(frontend_dir / rel_path)
+        if Path(local_path).exists():
+            return local_path
+
+        # File not found locally — fetch from frontend via HTTP
+        cached_path = os.path.join(_audio_cache_dir, rel_path.replace("/", "_"))
+        if Path(cached_path).exists():
+            logger.info("Audio cache hit: %s → %s", audio_url_str, cached_path)
+            return cached_path
+
+        frontend_url = settings.frontend_url.rstrip("/")
+        fetch_url = f"{frontend_url}{audio_url_str}"
+        logger.info("Audio not found locally, fetching from frontend: %s", fetch_url)
+        try:
+            resp = httpx.get(fetch_url, timeout=30.0)
+            resp.raise_for_status()
+            os.makedirs(os.path.dirname(cached_path), exist_ok=True)
+            with open(cached_path, "wb") as f:
+                f.write(resp.content)
+            logger.info("Cached frontend audio: %s → %s", audio_url_str, cached_path)
+            return cached_path
+        except Exception as e:
+            logger.error("Failed to fetch frontend audio %s: %s", fetch_url, e)
+            raise FileNotFoundError(f"Cannot fetch audio from frontend: {fetch_url} ({e})")
 
     # Legacy support if anything was saved to backend storage directly
     prefix = "/api/studio/audio/"
@@ -265,7 +296,7 @@ def _resolve_audio_path(audio_url_str: str) -> str:
         storage = Path(settings.storage_dir)
         rel = audio_url_str[len(prefix):]
         return str(storage / rel)
-        
+
     return audio_url_str
 
 
@@ -275,7 +306,10 @@ async def _render_one_page(
 ) -> str:
     """Render a single page to MP4 inside *work_dir*. Returns the mp4 path."""
     label = f"page{page.page_index + 1:02d}"
-    audio_paths = [_resolve_audio_path(c.audio_url) for c in page.clips]
+    try:
+        audio_paths = [_resolve_audio_path(c.audio_url) for c in page.clips]
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
     # Validate audio files exist
     for p in audio_paths:

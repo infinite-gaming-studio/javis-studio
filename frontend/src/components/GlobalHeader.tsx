@@ -192,7 +192,7 @@ export default function GlobalHeader({
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
             <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${activeTool ? activeTool.color : "from-cyan-600 to-blue-600"} flex items-center justify-center shadow-lg shadow-cyan-500/20 transition-all duration-300`}>
               {activeTool ? (
-                cloneElement(activeTool.icon as React.ReactElement, {
+                cloneElement(activeTool.icon as React.ReactElement<{ className?: string }>, {
                   className: "w-4.5 h-4.5 text-white",
                 })
               ) : (

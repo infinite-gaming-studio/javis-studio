@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     # Storage
     storage_dir: str = "./storage"
 
+    # Frontend URL (used by backend to fetch frontend-hosted audio files)
+    frontend_url: str = "http://localhost:3000"
+
     # CORS
     cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
 

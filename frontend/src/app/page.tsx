@@ -7,7 +7,8 @@ import {
   VoiceSettings, 
   ttsSingleVersion,
   audioUrl,
-  getSettings
+  getSettings,
+  CustomEmotion
 } from "@/lib/api";
 import { 
   dbSaveProject, 
@@ -49,6 +50,7 @@ interface TempStorageData {
   topic: string;
   pages: ProjectPage[];
   voiceSettings: VoiceSettings;
+  customEmotions: CustomEmotion[];
   timestamp: number;
 }
 
@@ -898,10 +900,6 @@ export default function StudioPage() {
                     <input type="file" accept="application/pdf" className="hidden" onChange={handleImportPdf} disabled={isImportingPdf} />
                   </label>
                   
-                  <button onClick={handleCopyPrompt} className="w-full px-3.5 py-2.5 text-xs font-bold text-blue-600 hover:bg-blue-50/50 rounded-lg flex items-center gap-2 transition-all text-left">
-                    <Copy className="w-3.5 h-3.5" />
-                    <span>复制 AI 提示词</span>
-                  </button>
                   
                   <button onClick={() => setShowHistory(true)} className="w-full px-3.5 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 rounded-lg flex items-center gap-2 transition-all text-left">
                     <History className="w-3.5 h-3.5 text-slate-400" />
@@ -1254,9 +1252,15 @@ export default function StudioPage() {
               </button>
             </div>
             <div className="p-6 flex-1 flex flex-col gap-4 overflow-y-auto custom-scroll">
-              <p className="text-sm text-slate-600 bg-cyan-50 p-3 rounded-xl border border-cyan-100 leading-relaxed">
-                请将大模型生成的带有 <strong>[第X页]</strong> 或 <strong>【第X页】</strong> 标记的文本直接粘贴到下方。<br/>系统会自动解析标记，将文案填充到对应的页面中，并根据字数进行<strong>智能拆分</strong>。
-              </p>
+              <div className="bg-[#f0f9fa] p-4 rounded-xl border border-cyan-100 flex items-center justify-between gap-4">
+                <p className="text-[14px] text-slate-600 leading-relaxed">
+                  请将大模型生成的带有 <strong>【第X页】</strong> 或 <strong>【第X页】</strong> 标记的文本直接粘贴到下方。<br/>系统会自动解析标记，将文案填充到对应的页面中，并根据字数进行<strong>智能拆分</strong>。
+                </p>
+                <button onClick={handleCopyPrompt} className="flex-shrink-0 px-4 py-2.5 text-[13px] font-bold text-cyan-700 bg-white hover:bg-cyan-50 border border-cyan-200 rounded-lg shadow-sm flex items-center gap-2 transition-colors">
+                  <Copy className="w-4 h-4" />
+                  复制 AI 提示词
+                </button>
+              </div>
               <textarea
                 value={importScriptText}
                 onChange={e => setImportScriptText(e.target.value)}

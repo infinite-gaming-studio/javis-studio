@@ -168,6 +168,10 @@ async def synthesize_rest(
         # Make the API call
         api_url = f"{settings.indextts_api_url.rstrip('/')}/api/tts"
         
+        # Log outgoing payload for debugging and verification
+        safe_data = {k: v for k, v in data.items() if k != "spk_audio" and k != "emo_audio"}
+        logger.info(f"[IndexTTS2 REST] Sending request to {api_url} with data: {safe_data}")
+        
         async with httpx.AsyncClient(timeout=120.0) as client:
             response = await client.post(
                 api_url,

@@ -1,6 +1,87 @@
 import { useState, useEffect } from "react";
-import { XCircle, Plus, Trash2, Edit2, Upload, Download, Save, Music, Hash, Type } from "lucide-react";
+import { XCircle, Plus, Trash2, Edit2, Upload, Download, Save, Music, Hash, Type, Copy, Check } from "lucide-react";
 import { CustomEmotion, EmotionMode, getSettings } from "@/lib/api";
+
+const copyToClipboard = async (text: string): Promise<boolean> => {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch (e) {
+      console.error("Clipboard API failed, falling back", e);
+    }
+  }
+  
+  // Fallback for non-secure contexts or sandboxed envs (Electron/Tauri)
+  try {
+    const textArea = document.createElement("textarea");
+    textArea.value = text;
+    textArea.style.top = "0";
+    textArea.style.left = "0";
+    textArea.style.position = "fixed";
+    textArea.style.opacity = "0";
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand("copy");
+    document.body.removeChild(textArea);
+    return successful;
+  } catch (err) {
+    console.error("Fallback copy failed", err);
+    return false;
+  }
+};
+
+const TEXT_PROMPT = `# 角色设定
+你是一位专业的 TTS（文本转语音）情感调音师。我们需要根据场景生成用于批量导入的文本情感控制 JSON。
+
+# 输出要求
+请直接输出 JSON 数组。不要有 Markdown 标记，不要解释。
+
+# 示例
+输入场景：充满激情，声音洪亮
+输出：
+[
+  {
+    "name": "激昂演讲",
+    "mode": "text",
+    "alpha": 1.5,
+    "speed": 1.0,
+    "text": "充满激情，声音洪亮"
+  }
+]
+
+# 实际任务
+输入场景：【在此填入需求】
+输出：`;
+
+const VECTOR_PROMPT = `# 角色设定
+你是一位专业的Netflix情感调音师，你十分擅长 indextts2 的情感向量调试。我们需要根据场景生成用于批量导入的 8维情感向量 JSON。
+
+# 维度说明
+向量为8个浮点数数组，每个浮点数取值范围是 [0.00, 1.00]，最小单位为 0.05（即所有数值必须是 0.05 的整倍数，例如 0.00, 0.05, 0.10, 0.15, 0.85, 1.00 等），顺序严格为：
+[开心, 愤怒, 悲伤, 恐惧, 厌恶, 忧郁, 惊讶, 平静]
+
+# 输出要求
+请直接输出 JSON 数组。不要有 Markdown 标记，不要解释。
+
+# 示例
+输入场景：像YouTube猎奇频道，低沉神秘。
+输出：
+[
+  {
+    "name": "猎奇沉浸",
+    "mode": "vector",
+    "alpha": 1.1,
+    "speed": 0.9,
+    "text": "像YouTube猎奇频道，低沉神秘。",
+    "vector": [0.00, 0.10, 0.30, 0.60, 0.10, 0.80, 0.40, 0.50]
+  }
+]
+
+# 实际任务
+输入场景：【在此填入需求】
+输出：`;
 import { useNotification } from "@/lib/NotificationContext";
 
 interface Props {
@@ -32,6 +113,8 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [isRegexMode, setIsRegexMode] = useState(false);
+  const [importExampleMode, setImportExampleMode] = useState<"text" | "vector">("vector");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -60,11 +143,13 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
     };
     setEditingId(newEmo.id);
     setEditForm(newEmo);
+    setShowImport(false);
   };
 
   const handleEdit = (emo: CustomEmotion) => {
     setEditingId(emo.id);
     setEditForm(emo);
+    setShowImport(false);
   };
 
   const handleSaveEdit = () => {
@@ -374,16 +459,57 @@ export default function EmotionLibrary({ isOpen, onClose, onEmotionsChanged }: P
           <div className="flex-1 overflow-y-auto bg-white custom-scroll relative">
             {showImport ? (
               <div className="p-8 max-w-2xl mx-auto flex flex-col h-full animate-in fade-in">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-4 shrink-0">
                   <h3 className="text-lg font-bold text-slate-800">批量导入 JSON 数组</h3>
                   <button onClick={() => setShowImport(false)} className="text-sm text-slate-500 hover:text-slate-800">取消导入</button>
                 </div>
-                <p className="text-xs text-slate-500 mb-4 leading-relaxed">
-                  格式示例: <br/>
-                  <code className="block mt-2 p-3 bg-slate-50 rounded-lg text-slate-700 font-mono text-[11px] whitespace-pre-wrap border border-slate-100">
-                    {`[\n  {\n    "name": "激昂演讲",\n    "mode": "text",\n    "alpha": 1.5,\n    "text": "充满激情，声音洪亮"\n  }\n]`}
-                  </code>
-                </p>
+                
+                <div className="mb-4 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-md shrink-0 flex flex-col">
+                  <div className="flex border-b border-slate-800 bg-slate-950/80 items-center justify-between px-3 py-1.5">
+                    <div className="flex gap-1">
+                      <button 
+                        onClick={() => setImportExampleMode("text")}
+                        className={`px-3 py-2 text-xs font-bold flex items-center gap-1.5 transition-all rounded-lg ${importExampleMode === "text" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"}`}
+                      >
+                        <Type className="w-3.5 h-3.5" /> 文本模式 Prompt
+                      </button>
+                      <button 
+                        onClick={() => setImportExampleMode("vector")}
+                        className={`px-3 py-2 text-xs font-bold flex items-center gap-1.5 transition-all rounded-lg ${importExampleMode === "vector" ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:text-slate-200"}`}
+                      >
+                        <Hash className="w-3.5 h-3.5" /> 向量模式 Prompt (推荐)
+                      </button>
+                    </div>
+                    
+                    <button 
+                      onClick={async () => {
+                        const success = await copyToClipboard(importExampleMode === "text" ? TEXT_PROMPT : VECTOR_PROMPT);
+                        if (success) {
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                          showToast("提示词已复制到剪贴板", "success");
+                        } else {
+                          showToast("复制失败，请手动选择复制", "error");
+                        }
+                      }}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 border ${
+                        copied 
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400" 
+                          : "bg-indigo-500/10 border-indigo-500/20 hover:bg-indigo-500/20 text-indigo-400 hover:text-indigo-300"
+                      }`}
+                      title="一键复制提示词"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copied ? "已复制" : "复制提示词"}</span>
+                    </button>
+                  </div>
+                  <div className="p-4 bg-slate-950/50">
+                    <pre className="text-[11px] leading-relaxed font-mono text-slate-300 whitespace-pre-wrap max-h-[160px] overflow-y-auto custom-scroll pr-2 select-all selection:bg-indigo-500/30">
+                      {importExampleMode === "text" ? TEXT_PROMPT : VECTOR_PROMPT}
+                    </pre>
+                  </div>
+                </div>
+
                 <textarea
                   value={importText}
                   onChange={e => setImportText(e.target.value)}

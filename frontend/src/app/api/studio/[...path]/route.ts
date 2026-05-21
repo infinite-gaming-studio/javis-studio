@@ -185,6 +185,16 @@ export async function POST(
                     emo_vector?: number[];
                     emo_text?: string;
                     use_random?: boolean;
+                    speed?: number;
+                    do_sample?: boolean;
+                    top_p?: number;
+                    top_k?: number;
+                    temperature?: number;
+                    length_penalty?: number;
+                    num_beams?: number;
+                    repetition_penalty?: number;
+                    max_mel_tokens?: number;
+                    max_text_tokens_per_segment?: number;
                 };
             };
 
@@ -235,11 +245,23 @@ export async function POST(
             if (vs.emo_alpha !== undefined) formData.append("emo_alpha", String(vs.emo_alpha));
             if (vs.emo_text !== undefined) formData.append("emo_text", vs.emo_text);
             if (vs.use_random !== undefined) formData.append("use_random", String(vs.use_random));
+            if (vs.speed !== undefined) formData.append("speed", String(vs.speed));
+            if (vs.do_sample !== undefined) formData.append("do_sample", String(vs.do_sample));
+            if (vs.top_p !== undefined) formData.append("top_p", String(vs.top_p));
+            if (vs.top_k !== undefined) formData.append("top_k", String(vs.top_k));
+            if (vs.temperature !== undefined) formData.append("temperature", String(vs.temperature));
+            if (vs.length_penalty !== undefined) formData.append("length_penalty", String(vs.length_penalty));
+            if (vs.num_beams !== undefined) formData.append("num_beams", String(vs.num_beams));
+            if (vs.repetition_penalty !== undefined) formData.append("repetition_penalty", String(vs.repetition_penalty));
+            if (vs.max_mel_tokens !== undefined) formData.append("max_mel_tokens", String(vs.max_mel_tokens));
+            if (vs.max_text_tokens_per_segment !== undefined) formData.append("max_text_tokens_per_segment", String(vs.max_text_tokens_per_segment));
             // emo_vector is sent as individual emo_* params or JSON depending on backend mode
             if (vs.emo_vector !== undefined) formData.append("emo_vector", JSON.stringify(vs.emo_vector));
 
             const ttsHeaders: Record<string, string> = {};
             if (ttsToken) ttsHeaders["Authorization"] = `Bearer ${ttsToken}`;
+
+            console.log(`[Studio Proxy] Proxying TTS to IndexTTS2: ${targetUrl} | text="${text.slice(0, 30)}..." | speed=${vs.speed ?? 1.0} | emo_mode=${vs.emotion_mode ?? "none"}`);
 
             let ttsRes: Response;
             try {
