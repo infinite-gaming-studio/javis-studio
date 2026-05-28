@@ -299,6 +299,7 @@ async def synthesize(
     output_dir: str,
     filename: Optional[str] = None,
     emotion_hint: Optional[str] = None,
+    api_url_override: Optional[str] = None,
 ) -> str:
     """
     High-level synthesis entry point.
@@ -308,10 +309,32 @@ async def synthesize(
     fname = filename or f"{uuid.uuid4().hex}.wav"
     output_path = str(Path(output_dir) / fname)
 
+    # Use per-request URL override if provided, otherwise fall back to .env
+    if api_url_override:
+        settings.indextts_api_url = api_url_override.rstrip("/")
+        logger.info(f"Using per-request IndexTTS URL override: {settings.indextts_api_url}")
+
     mode = settings.indextts_mode.lower()
+    logger.info(f"[TTS Entry] Starting synthesis in {mode} mode...")
+
     if mode == "rest":
         return await synthesize_rest(text, voice_settings, output_path, emotion_hint)
     elif mode == "gradio":
-        return await synthesize_gradio(text, voice_settings, output_path, emotion_hint)
+        try:
+            logger.info("[TTS Entry] Attempting Gradio synthesis...")
+            return await synthesize_gradio(text, voice_settings, output_path, emotion_hint)
+        except Exception as gradio_err:
+            logger.warning(
+                f"[TTS Entry] Gradio synthesis failed: {gradio_err}. "
+                "Attempting automatic fallback to REST API..."
+            )
+            try:
+                return await synthesize_rest(text, voice_settings, output_path, emotion_hint)
+            except Exception as rest_err:
+                logger.error(f"[TTS Entry] Fallback to REST also failed: {rest_err}")
+                raise RuntimeError(
+                    f"IndexTTS2 synthesis failed in both Gradio and REST modes. "
+                    f"Gradio error: {gradio_err}. REST error: {rest_err}"
+                )
 
     raise NotImplementedError(f"Unsupported indextts_mode: {mode}")

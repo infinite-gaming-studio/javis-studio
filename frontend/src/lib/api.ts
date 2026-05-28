@@ -159,8 +159,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 
 export function audioUrl(path: string): string {
   if (path.startsWith("http") || path.startsWith("data:")) return path;
-  // If it's a relative path from our own public/audio, return as is
   if (path.startsWith("/audio/")) return path;
+  // Backend audio paths like /api/studio/audio/single/{uuid}.wav
+  // are proxied through the Next.js API route
+  if (path.startsWith("/api/studio/audio/")) return path;
 
   const settings = getSettings();
   const base = settings.ttsApiUrl || "http://localhost:8000";

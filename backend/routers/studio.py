@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, BackgroundTasks, HTTPException, UploadFile, File, Form, Header
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 
@@ -133,7 +133,7 @@ async def generate_script_only(req: ScriptOnlyRequest):
 
 
 @router.post("/tts", response_model=TTSSingleResponse)
-async def tts_single(req: TTSSingleRequest):
+async def tts_single(req: TTSSingleRequest, x_tts_url: Optional[str] = Header(None)):
     """Synthesize TTS for a single text segment."""
     storage = Path(settings.storage_dir) / "single"
     fname = f"{uuid.uuid4().hex}.wav"
@@ -143,6 +143,8 @@ async def tts_single(req: TTSSingleRequest):
             voice_settings=req.voice_settings,
             output_dir=str(storage),
             filename=fname,
+            emotion_hint=None,
+            api_url_override=x_tts_url,
         )
         duration = audio_service.get_audio_duration(out)
     except Exception as e:
