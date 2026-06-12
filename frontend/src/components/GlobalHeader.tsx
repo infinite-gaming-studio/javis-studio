@@ -66,6 +66,15 @@ const tools: ToolItem[] = [
     color: "from-fuchsia-500 to-pink-500",
     badge: "New",
   },
+  {
+    id: "pdf-to-video",
+    name: "PDF 转视频",
+    description: "绘本转多角色配音视频",
+    icon: <Film className="w-5 h-5" />,
+    href: "/pdf-to-video",
+    color: "from-rose-500 to-pink-600",
+    badge: "New",
+  },
 ];
 
 // 即将推出的工具
@@ -116,6 +125,7 @@ export default function GlobalHeader({
     if (pathname.startsWith("/pdf-to-image")) return tools.find(t => t.id === "pdf-to-image");
     if (pathname.startsWith("/video-matcher") || pathname.startsWith("/video-matcher-workflow")) return tools.find(t => t.id === "video-matcher");
     if (pathname.startsWith("/stitch")) return tools.find(t => t.id === "stitch-studio");
+    if (pathname.startsWith("/pdf-to-video")) return tools.find(t => t.id === "pdf-to-video");
     return null;
   };
   const activeTool = getActiveTool();

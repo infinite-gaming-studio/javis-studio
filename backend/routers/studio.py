@@ -234,6 +234,16 @@ class AudioClipInfo(BaseModel):
     """A single audio clip belonging to one page."""
     audio_url: str        # e.g. "/api/studio/audio/single/abc.wav"
     duration_secs: Optional[float] = None
+    text: Optional[str] = None  # subtitle text for this clip
+
+
+class SubtitleStyle(BaseModel):
+    """Subtitle rendering style configuration."""
+    font_size: int = 24
+    font_color: str = "white"
+    outline_color: str = "black"
+    outline_width: int = 2
+    position: str = "bottom"  # "bottom" | "top" | "middle"
 
 
 class PageRenderRequest(BaseModel):
@@ -249,6 +259,10 @@ class ProjectRenderRequest(BaseModel):
     project_name: Optional[str] = "Javis_Studio_Project"
     pages: List[PageRenderRequest]
     merge: bool = True    # if False, returns a ZIP of per-page MP4s
+    transition: Optional[str] = None  # "fade" | "slideleft" | ...  None = no transition
+    transition_duration: float = 1.0  # seconds
+    subtitle_style: Optional[SubtitleStyle] = None  # if set, burn subtitles
+    enable_subtitles: bool = False
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -302,9 +316,42 @@ def _resolve_audio_path(audio_url_str: str) -> str:
     return audio_url_str
 
 
+def _generate_srt_for_page(
+    clips: List[AudioClipInfo],
+    style: Optional[SubtitleStyle] = None,
+) -> str:
+    """Generate SRT subtitle content from audio clips for a single page."""
+    srt_lines = []
+    offset_ms = 0
+    for i, clip in enumerate(clips):
+        if not clip.text:
+            continue
+        dur_ms = int((clip.duration_secs or 2.0) * 1000)
+        start_ms = offset_ms
+        end_ms = offset_ms + dur_ms
+        start_h = start_ms // 3600000
+        start_m = (start_ms % 3600000) // 60000
+        start_s = (start_ms % 60000) // 1000
+        start_ms_rem = start_ms % 1000
+        end_h = end_ms // 3600000
+        end_m = (end_ms % 3600000) // 60000
+        end_s = (end_ms % 60000) // 1000
+        end_ms_rem = end_ms % 1000
+        srt_lines.append(str(i + 1))
+        srt_lines.append(
+            f"{start_h:02d}:{start_m:02d}:{start_s:02d},{start_ms_rem:03d}"
+            f" --> {end_h:02d}:{end_m:02d}:{end_s:02d},{end_ms_rem:03d}"
+        )
+        srt_lines.append(clip.text)
+        srt_lines.append("")
+        offset_ms = end_ms
+    return "\n".join(srt_lines)
+
+
 async def _render_one_page(
     page: PageRenderRequest,
     work_dir: str,
+    subtitle_srt: Optional[str] = None,
 ) -> str:
     """Render a single page to MP4 inside *work_dir*. Returns the mp4 path."""
     label = f"page{page.page_index + 1:02d}"
@@ -313,7 +360,6 @@ async def _render_one_page(
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    # Validate audio files exist
     for p in audio_paths:
         if not Path(p).exists():
             raise HTTPException(
@@ -328,6 +374,7 @@ async def _render_one_page(
         output_path=out_path,
         work_dir=work_dir,
         page_label=label,
+        subtitle_srt=subtitle_srt,
     )
     return out_path
 
@@ -394,16 +441,18 @@ async def render_project_video(
 
     work_dir = tempfile.mkdtemp(prefix="javis_project_video_")
     try:
-        # Render pages concurrently with a concurrency limit (e.g., 4)
-        # This prevents HTTP timeouts on large PDFs while avoiding CPU/RAM exhaustion
         sem = asyncio.Semaphore(4)
 
         async def _render_with_sem(p: PageRenderRequest) -> Optional[str]:
             if not p.image or not p.clips:
                 logger.warning("Skipping page %d: missing image or clips", p.page_index)
                 return None
+            # Generate SRT for this page if subtitles enabled
+            srt_content = None
+            if req.enable_subtitles and any(c.text for c in p.clips):
+                srt_content = _generate_srt_for_page(p.clips, req.subtitle_style)
             async with sem:
-                return await _render_one_page(p, work_dir)
+                return await _render_one_page(p, work_dir, subtitle_srt=srt_content)
 
         tasks = [_render_with_sem(page) for page in req.pages]
         results = await asyncio.gather(*tasks)
@@ -412,12 +461,35 @@ async def render_project_video(
         if not mp4_paths:
             raise HTTPException(status_code=400, detail="No renderable pages (each page needs an image AND at least one audio clip)")
 
+        # Save page images to work_dir for pageflip transitions
+        page_image_paths: List[str] = []
+        if req.transition == "pageflip":
+            for page in req.pages:
+                if not page.image:
+                    page_image_paths.append("")
+                    continue
+                img_path = os.path.join(work_dir, f"page_{page.page_index}_img.png")
+                render_video_service._save_image(page.image, img_path)
+                page_image_paths.append(img_path)
+
         safe_name = (req.project_name or "Javis_Studio_Project").replace("/", "_").replace("\\", "_")
 
         if req.merge:
-            # ── Merge into one MP4 ──────────────────────────────────────
             merged_path = os.path.join(work_dir, f"{safe_name}.mp4")
-            await render_video_service.async_merge_mp4s(mp4_paths, merged_path, work_dir)
+            if req.transition == "pageflip" and len(mp4_paths) > 1 and len(page_image_paths) >= len(mp4_paths):
+                # Use page-flip merge with image-based transitions
+                await render_video_service.async_merge_mp4s_pageflip(
+                    mp4_paths, page_image_paths, merged_path, work_dir,
+                    duration=req.transition_duration,
+                )
+            elif req.transition and len(mp4_paths) > 1:
+                await render_video_service.async_merge_mp4s_with_transitions(
+                    mp4_paths, merged_path, work_dir,
+                    transition=req.transition,
+                    duration=req.transition_duration,
+                )
+            else:
+                await render_video_service.async_merge_mp4s(mp4_paths, merged_path, work_dir)
             background_tasks.add_task(shutil.rmtree, work_dir, True)
             return FileResponse(
                 path=merged_path,
