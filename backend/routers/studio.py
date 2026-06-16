@@ -42,7 +42,11 @@ def _audio_url(filename: str) -> str:
 
 
 @router.post("/generate", response_model=StudioGenerateResponse)
-async def generate_full(req: StudioRequest):
+async def generate_full(
+    req: StudioRequest,
+    x_tts_url: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+):
     """
     Full pipeline: images + prompt → LLM script → TTS per segment → optional concat.
     """
@@ -50,6 +54,7 @@ async def generate_full(req: StudioRequest):
     session_id = uuid.uuid4().hex
     session_dir = str(storage / session_id)
     os.makedirs(session_dir, exist_ok=True)
+    token = authorization.removeprefix("Bearer ").strip() if authorization else None
 
     # 1. Generate (or use override) script
     if req.override_script:
@@ -82,6 +87,8 @@ async def generate_full(req: StudioRequest):
                 output_dir=session_dir,
                 filename=fname,
                 emotion_hint=seg.emotion_hint,
+                api_url_override=x_tts_url,
+                api_token_override=token,
             )
             duration = audio_service.get_audio_duration(out)
             return AudioSegmentResult(
@@ -133,10 +140,15 @@ async def generate_script_only(req: ScriptOnlyRequest):
 
 
 @router.post("/tts", response_model=TTSSingleResponse)
-async def tts_single(req: TTSSingleRequest, x_tts_url: Optional[str] = Header(None)):
+async def tts_single(
+    req: TTSSingleRequest,
+    x_tts_url: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None),
+):
     """Synthesize TTS for a single text segment."""
     storage = Path(settings.storage_dir) / "single"
     fname = f"{uuid.uuid4().hex}.wav"
+    token = authorization.removeprefix("Bearer ").strip() if authorization else None
     try:
         out = await tts_service.synthesize(
             text=req.text,
@@ -145,6 +157,7 @@ async def tts_single(req: TTSSingleRequest, x_tts_url: Optional[str] = Header(No
             filename=fname,
             emotion_hint=None,
             api_url_override=x_tts_url,
+            api_token_override=token,
         )
         duration = audio_service.get_audio_duration(out)
     except Exception as e:
@@ -165,6 +178,42 @@ async def serve_audio(session_id: str, filename: str):
         raise HTTPException(status_code=404, detail="Audio file not found")
     media_type = "audio/mpeg" if filename.endswith(".mp3") else "audio/wav"
     return FileResponse(str(audio_path), media_type=media_type)
+
+
+class ConcatAudioRequest(BaseModel):
+    """Request for concatenating multiple audio files with silence gaps."""
+    audio_urls: List[str]
+    silence_secs: float = 1.0
+
+
+@router.post("/audio/concatenate")
+async def concatenate_audio(req: ConcatAudioRequest, background_tasks: BackgroundTasks):
+    """Concatenate multiple audio files with silence between each segment."""
+    import shutil, tempfile
+
+    work_dir = tempfile.mkdtemp(prefix="javis_audio_concat_")
+    audio_paths = []
+    for url in req.audio_urls:
+        path = _resolve_audio_path(url)
+        if not Path(path).exists():
+            shutil.rmtree(work_dir, ignore_errors=True)
+            raise HTTPException(status_code=404, detail=f"Audio file not found: {url}")
+        audio_paths.append(path)
+
+    result = audio_service.concatenate_segments(
+        audio_paths, work_dir,
+        output_filename="combined",
+        silence_ms=int(req.silence_secs * 1000),
+        output_format="wav",
+    )
+
+    background_tasks.add_task(shutil.rmtree, work_dir, True)
+    return FileResponse(
+        path=result,
+        media_type="audio/wav",
+        filename="combined_audio.wav",
+    )
+
 
 import subprocess
 
@@ -319,12 +368,14 @@ def _resolve_audio_path(audio_url_str: str) -> str:
 def _generate_srt_for_page(
     clips: List[AudioClipInfo],
     style: Optional[SubtitleStyle] = None,
+    gap_ms: int = 1000,
 ) -> str:
-    """Generate SRT subtitle content from audio clips for a single page."""
+    """Generate SRT subtitle content from audio clips for a single page (with *gap_ms* between clips)."""
     srt_lines = []
     offset_ms = 0
     for i, clip in enumerate(clips):
         if not clip.text:
+            offset_ms += int((clip.duration_secs or 2.0) * 1000) + gap_ms
             continue
         dur_ms = int((clip.duration_secs or 2.0) * 1000)
         start_ms = offset_ms
@@ -344,7 +395,7 @@ def _generate_srt_for_page(
         )
         srt_lines.append(clip.text)
         srt_lines.append("")
-        offset_ms = end_ms
+        offset_ms = end_ms + gap_ms
     return "\n".join(srt_lines)
 
 

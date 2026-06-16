@@ -324,6 +324,53 @@ export async function POST(
     return NextResponse.json({ audio_url: `/audio/${fileName}`, duration_secs: durationSecs });
   }
 
+  // ── route: render-video/* ── proxy video render requests to backend ──────
+  if (subPath.startsWith("render-video/")) {
+    const backendUrl = process.env.BACKEND_API_URL || "http://backend:8000";
+    const targetUrl = `${backendUrl}/api/studio/${subPath}`;
+
+    console.log(`[Studio Proxy] Forwarding render-video to backend: ${targetUrl}`);
+
+    let renderRes: Response;
+    try {
+      renderRes = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (fetchErr: any) {
+      console.error(`[Studio] Render-video backend fetch failed:`, fetchErr);
+      const errMsg = fetchErr?.message || fetchErr?.cause?.message || String(fetchErr);
+      return NextResponse.json(
+        { error: `连接后端渲染服务失败: ${errMsg}` },
+        { status: 502 }
+      );
+    }
+
+    if (!renderRes.ok) {
+      const errText = await renderRes.text().catch(() => "未知错误");
+      console.error(`[Studio] Render-video error ${renderRes.status}: ${errText.slice(0, 200)}`);
+      return NextResponse.json(
+        { error: `视频渲染失败: ${errText.slice(0, 500)}` },
+        { status: renderRes.status }
+      );
+    }
+
+    const contentType = renderRes.headers.get("content-type") || "video/mp4";
+    const contentDisposition = renderRes.headers.get("content-disposition") || "";
+    const videoBuffer = Buffer.from(await renderRes.arrayBuffer());
+
+    const respHeaders: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Length": String(videoBuffer.length),
+    };
+    if (contentDisposition) {
+      respHeaders["Content-Disposition"] = contentDisposition;
+    }
+
+    return new Response(videoBuffer, { headers: respHeaders });
+  }
+
   // ── route: generate (LLM + TTS) ───────────────────────────────────────
   if (subPath === "generate") {
     const backendUrl = process.env.BACKEND_API_URL || "http://backend:8000";
@@ -361,10 +408,48 @@ export async function POST(
     return NextResponse.json(await genRes.json());
   }
 
-  return NextResponse.json(
-  { error: `未知的 Studio 路由: ${subPath}` },
-  { status: 404 }
-  );
+  // ── catch-all: forward any other POST to backend (audio/concatenate, etc.) ──
+  {
+    const backendUrl = process.env.BACKEND_API_URL || "http://backend:8000";
+    const targetUrl = `${backendUrl}/api/studio/${subPath}`;
+
+    let backendRes: Response;
+    try {
+      backendRes = await fetch(targetUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    } catch (fetchErr: any) {
+      return NextResponse.json(
+        { error: `连接后端服务失败: ${fetchErr?.message || String(fetchErr)}` },
+        { status: 502 }
+      );
+    }
+
+    const contentType = backendRes.headers.get("content-type") || "";
+    const buffer = Buffer.from(await backendRes.arrayBuffer());
+
+    if (!backendRes.ok) {
+      const errText = buffer.toString("utf-8").slice(0, 500);
+      return NextResponse.json(
+        { error: `后端错误: ${errText}` },
+        { status: backendRes.status }
+      );
+    }
+
+    if (contentType.includes("json")) {
+      return NextResponse.json(JSON.parse(buffer.toString("utf-8")));
+    }
+
+    const respHeaders: Record<string, string> = {
+      "Content-Type": contentType,
+      "Content-Length": String(buffer.length),
+    };
+    const contentDisposition = backendRes.headers.get("content-disposition");
+    if (contentDisposition) respHeaders["Content-Disposition"] = contentDisposition;
+    return new Response(buffer, { headers: respHeaders });
+  }
  } catch (error: any) {
   console.error("[Studio Proxy] Internal Error:", error);
   return NextResponse.json(

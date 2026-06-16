@@ -29,6 +29,7 @@ import tempfile
 import uuid
 from pathlib import Path
 from typing import List, Optional, Tuple
+from pydub import AudioSegment
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +83,29 @@ def _find_ffmpeg() -> str:
 FFMPEG_BIN: str = _find_ffmpeg()
 
 
+def _probe_encoder(ffmpeg_path: str, encoder: str, args: List[str]) -> bool:
+    """Test-encode a 1-frame solid-color clip to verify the encoder actually works."""
+    import tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        cmd = [
+            ffmpeg_path, "-y",
+            "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.04",
+            "-frames:v", "1",
+            "-c:v", encoder,
+        ] + args + [tmp_path]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+        return result.returncode == 0 and os.path.getsize(tmp_path) > 0
+    except Exception:
+        return False
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+
+
 def _get_best_h264_encoder(ffmpeg_path: str) -> str:
     """Dynamically determine the best h264 encoder based on environment and ffmpeg capabilities."""
     try:
@@ -89,12 +113,14 @@ def _get_best_h264_encoder(ffmpeg_path: str) -> str:
         encoders = result.stdout
         # Mac VideoToolbox hardware acceleration
         if "h264_videotoolbox" in encoders and platform.system() == "Darwin":
-            logger.info("Using GPU acceleration: h264_videotoolbox")
-            return "h264_videotoolbox"
+            if _probe_encoder(ffmpeg_path, "h264_videotoolbox", ["-b:v", "1M"]):
+                logger.info("Using GPU acceleration: h264_videotoolbox")
+                return "h264_videotoolbox"
         # Nvidia hardware acceleration
         if "h264_nvenc" in encoders:
-            logger.info("Using GPU acceleration: h264_nvenc")
-            return "h264_nvenc"
+            if _probe_encoder(ffmpeg_path, "h264_nvenc", ["-rc", "vbr", "-cq", "23"]):
+                logger.info("Using GPU acceleration: h264_nvenc")
+                return "h264_nvenc"
     except Exception as e:
         logger.warning("Failed to probe ffmpeg encoders, falling back to libx264: %s", e)
     
@@ -103,6 +129,34 @@ def _get_best_h264_encoder(ffmpeg_path: str) -> str:
 
 
 H264_ENCODER: str = _get_best_h264_encoder(FFMPEG_BIN)
+
+
+def _get_encoder_preset(encoder: str, quality: str = "fast") -> str:
+    """Return an appropriate preset for the given encoder.
+
+    libx264 / h264_videotoolbox: ultrafast / fast / medium / slow
+    h264_nvenc: p1 / p4 / p7  (p1=fastest, p7=best quality)
+    """
+    if encoder == "h264_nvenc":
+        nvenc_map = {"ultrafast": "p1", "fast": "p4", "medium": "p5", "slow": "p7"}
+        return nvenc_map.get(quality, "p4")
+    if encoder == "h264_videotoolbox":
+        return quality
+    return quality
+
+
+def _get_encoder_quality_args(encoder: str, crf: str = "23") -> List[str]:
+    """Return rate-control args appropriate for the encoder.
+
+    libx264: -crf 23
+    h264_nvenc: -rc vbr -cq 23  (NVENC uses VBR + constant quality)
+    h264_videotoolbox: -b:v 5M  (VideoToolbox doesn't support CRF)
+    """
+    if encoder == "h264_nvenc":
+        return ["-rc", "vbr", "-cq", crf]
+    if encoder == "h264_videotoolbox":
+        return ["-b:v", "5M"]
+    return ["-crf", crf]
 
 
 # ---------------------------------------------------------------------------
@@ -137,24 +191,19 @@ def _save_image(image_src: str, dest_path: str) -> None:
         shutil.copy2(image_src, dest_path)
 
 
-def _concat_wavs(wav_paths: List[str], out_path: str) -> None:
-    """Concatenate one or more WAV files into *out_path*."""
+def _concat_wavs(wav_paths: List[str], out_path: str, gap_ms: int = 1000) -> None:
+    """Concatenate one or more WAV files into *out_path* with *gap_ms* silence between segments."""
     if len(wav_paths) == 1:
         shutil.copy2(wav_paths[0], out_path)
         return
-    # Write a concat list file understood by ffmpeg
-    list_file = out_path + ".list.txt"
-    with open(list_file, "w", encoding="utf-8") as f:
-        for p in wav_paths:
-            f.write(f"file '{p}'\n")
-    _run([
-        FFMPEG_BIN, "-y",
-        "-f", "concat", "-safe", "0",
-        "-i", list_file,
-        "-c", "copy",
-        out_path,
-    ])
-    os.unlink(list_file)
+    combined = AudioSegment.empty()
+    silence = AudioSegment.silent(duration=gap_ms)
+    for i, p in enumerate(wav_paths):
+        if i > 0:
+            combined += silence
+        seg = AudioSegment.from_file(p)
+        combined += seg
+    combined.export(out_path, format="wav")
 
 
 # ---------------------------------------------------------------------------
@@ -225,8 +274,8 @@ def render_page_mp4(
         "-i", img_path,
         "-i", audio_path,
         "-c:v", H264_ENCODER,
-        "-preset", "ultrafast",
-        "-crf", "23",
+        "-preset", _get_encoder_preset(H264_ENCODER, "ultrafast"),
+        *_get_encoder_quality_args(H264_ENCODER),
         "-pix_fmt", "yuv420p",
         "-vf", vf_combined,
         "-c:a", "aac",
@@ -366,8 +415,8 @@ def merge_mp4s_with_transitions(
         "-map", f"[{final_label}]",
         "-map", "[aout]",
         "-c:v", H264_ENCODER,
-        "-preset", "fast",
-        "-crf", "23",
+        "-preset", _get_encoder_preset(H264_ENCODER, "fast"),
+        *_get_encoder_quality_args(H264_ENCODER),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "192k",
@@ -435,8 +484,8 @@ def _create_pageflip_transition_clip(
         "-map", "[v]",
         "-t", str(duration),
         "-c:v", H264_ENCODER,
-        "-preset", "ultrafast",
-        "-crf", "23",
+        "-preset", _get_encoder_preset(H264_ENCODER, "ultrafast"),
+        *_get_encoder_quality_args(H264_ENCODER),
         "-pix_fmt", "yuv420p",
         "-an",
         output_path,
@@ -504,8 +553,8 @@ def merge_mp4s_pageflip(
         "-f", "concat", "-safe", "0",
         "-i", list_file,
         "-c:v", H264_ENCODER,
-        "-preset", "fast",
-        "-crf", "23",
+        "-preset", _get_encoder_preset(H264_ENCODER, "fast"),
+        *_get_encoder_quality_args(H264_ENCODER),
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "192k",

@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 // 根据环境变量确定后端地址（Docker 内使用服务名，外部使用 localhost）
 const backendUrl = process.env.BACKEND_API_URL || "http://localhost:8000";
 
-const nextConfig: NextConfig = {
+const nextConfig = {
+  turbopack: {},
   async rewrites() {
     return {
       afterFiles: [
@@ -33,6 +34,12 @@ const nextConfig: NextConfig = {
         {
           source: "/api/studio/video/convert",
           destination: `${backendUrl}/api/studio/video/convert`,
+        },
+        
+        // PDF conversion - handled by backend
+        {
+          source: "/api/pdf/convert",
+          destination: `${backendUrl}/api/pdf/convert`,
         },
       
       // TTS is handled by frontend API route to support external TTS APIs

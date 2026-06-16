@@ -300,6 +300,7 @@ async def synthesize(
     filename: Optional[str] = None,
     emotion_hint: Optional[str] = None,
     api_url_override: Optional[str] = None,
+    api_token_override: Optional[str] = None,
 ) -> str:
     """
     High-level synthesis entry point.
@@ -313,6 +314,11 @@ async def synthesize(
     if api_url_override:
         settings.indextts_api_url = api_url_override.rstrip("/")
         logger.info(f"Using per-request IndexTTS URL override: {settings.indextts_api_url}")
+
+    # Use per-request token override if provided, otherwise fall back to .env
+    if api_token_override:
+        settings.indextts_api_token = api_token_override
+        logger.info("Using per-request IndexTTS token override")
 
     mode = settings.indextts_mode.lower()
     logger.info(f"[TTS Entry] Starting synthesis in {mode} mode...")

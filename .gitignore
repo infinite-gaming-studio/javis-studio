@@ -105,6 +105,9 @@ yarn-error.log*
 /backend/storage/*
 !/backend/storage/.gitkeep
 
+# root storage (TTS audio output)
+/storage/
+
 # ============================================
 # Docker
 # ============================================

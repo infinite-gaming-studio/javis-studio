@@ -52,6 +52,11 @@ async def convert_pdf(
     if not 0.1 <= quality <= 1.0:
         raise HTTPException(status_code=400, detail=f"Quality must be between 0.1 and 1.0, got {quality}")
     
+    # Validate file size before reading
+    MAX_SIZE = 200 * 1024 * 1024  # 200MB
+    if file.size and file.size > MAX_SIZE:
+        raise HTTPException(status_code=413, detail=f"File too large: {file.size / 1024 / 1024:.0f}MB exceeds {MAX_SIZE / 1024 / 1024:.0f}MB limit")
+    
     # Parse pages
     page_list = None
     if pages:
@@ -65,6 +70,11 @@ async def convert_pdf(
         pdf_bytes = await file.read()
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Failed to read file: {e}")
+    
+    # Double-check size after reading (file.size may not be set for multipart)
+    MAX_BYTES = 200 * 1024 * 1024
+    if len(pdf_bytes) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail=f"File too large: {len(pdf_bytes) / 1024 / 1024:.0f}MB exceeds {MAX_BYTES / 1024 / 1024:.0f}MB limit")
     
     # Convert
     try:
